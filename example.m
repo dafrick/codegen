@@ -25,7 +25,7 @@
 %  Hx = [0 1], hx = [0], Hu = 1, and hu = 0
 %
 
-function [xs, us] = example(varargin)
+function [xs, us, consensus, ts, nIts] = example(varargin)
     %% Defining optional inputs as key-value pairs
     % TODO: Clean up and document inputs
     p = inputParser;
@@ -172,7 +172,7 @@ function [xs, us] = example(varargin)
         % Run Fixed-point iteration
         [x, y, sv, nIt, t] = eprox(zeros(model.dims.nn, 1), xs(:,k), update(h-H*refs));
         nIts(k) = nIt;
-        t(k) = t;
+        ts(k) = t;
         consensus(k) = norm(x-y,2);
         z = y;
         if options.stopOnThreshold && (nIt >= options.maxIt)
