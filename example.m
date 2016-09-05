@@ -162,7 +162,7 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     %% Optimization objective (strictly convex quadratic)
     
     %% Generate embedded solver
-    [update, H, h, xi] = pcg.generateSolver(model, N, Hx, hx, Hu, hu, xi, ...
+    [update, xi] = pcg.generateSolver(model, N, Hx, hx, Hu, hu, xi, ...
                                                    'solverName', options.solverName, ...
                                                    'overwriteSolver', options.overwriteSolver, ...
                                                    'gendir', options.gendir, ...
@@ -184,7 +184,7 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     ts = zeros(nSteps,1);
     consensus = zeros(nSteps,1);
     lambda = zeros(model.dims.nn,nSteps);
-    obj = zeros(nSteps,N);
+    obj = nan(nSteps,N);
     cviol = zeros(nSteps);
     
     % Generate references
@@ -202,7 +202,7 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
         % Initializing
         refs = reshape([ref.u(:,k:N+k-1); ref.x(:,k:N+k-1); ref.x(:,k:N+k-1)], [], 1); %#ok
         % Run Fixed-point iteration
-        [z, y, s, nIt, t] = eval([options.solverName '(zeros(model.dims.nn, 1), xs(:,k), update(h-H*refs));']);
+        [z, y, s, nIt, t] = eval([options.solverName '(zeros(model.dims.nn, 1), xs(:,k), update(refs));']);
         nIts(k) = nIt;
         ts(k) = t;
         consensus(k) = norm(z-y,2);
@@ -220,7 +220,6 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
         end
         [x,u,w] = pcg.recoverStatesInputs(sol, model.dims, 'auxiliaries', true);
         
-        obj(k,:) = nan*ones(1,N);
         cviol(k) = norm(x-w,2);
         for l=1:N
             obj(k,l) = 0.5*(x(:,l)-ref.x(:,l))'*Hx*(x(:,l)-ref.x(:,l)) + 0.5*(u(:,l)-ref.u(:,l))'*Hu*(u(:,l)-ref.u(:,l));

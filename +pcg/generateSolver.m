@@ -1,6 +1,6 @@
 %% Automatic code generation for hybrid model predictive control with piecewise affine (PWA) dynamics
 %
-% update = GENERATESOLVER(model, N, Hx, hx, Hu, hu, options)
+% [update, xi] = GENERATESOLVER(model, N, Hx, hx, Hu, hu, options)
 %
 % min sum_{k=0}^N 0.5*-x_{k+1}'*Hx*x_{k+1} + hx'*x_{k+1} + 0.5*u_{k}'*Hu*u_{k} + hu'*u_{k}
 %  s.t. x_{k+1} = dyn.A{i}*x_{k} + dyn.B{i}*u{k} + dyn.c{i},
@@ -49,11 +49,7 @@
 %  Hu - Quadratic input-cost matrix
 %  hu - Linear input-cost
 % OUTPUT:
-%  x         - Closed-loop state trajectory [x0 ... xN]
-%  u         - Closed-loop input trajectory [u0 ... uN-1]
-%  consensus - Final consensus violation ||z-y||^2 for each iteration
-%  t         - Execution time for each iteration
-%  nIt       - Number of iterations for each iteration
+%  update
 % INPUT (optional):
 %  'solverName' - Name of the generated solver (Default: hybridMPC)
 %  'N'          - Control horizon (Default: 10)
@@ -67,7 +63,7 @@
 %  'verbose'    - Determines verbosity of output, 0 is no output, 2 is full output (Default: 2)
 %
 
-function [update, H, h, xi] = generateSolver(varargin)
+function [update, xi] = generateSolver(varargin)
     p = inputParser;
     p.addRequired('model', @isstruct);
     p.addRequired('N', @(x)(isnumeric(x) && length(x) == 1 && x > 0 && mod(x,1) == 0));
@@ -100,7 +96,8 @@ function [update, H, h, xi] = generateSolver(varargin)
     end
     
     %% Generate iteration data
-    [M, ~, W, update, xi] = pcg.getIterationData(H, h, N, model.dims, xi);
+    [M, ~, W, updateC, xi] = pcg.getIterationData(H, h, N, model.dims, xi);
+    update = @(r)(updateC(h-H'*r));
     
     %% Generate individual projections via MPT
     if ~options.overwriteSolver && exist(options.gendir, 'dir')
