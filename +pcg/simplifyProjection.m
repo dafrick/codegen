@@ -32,7 +32,7 @@ function [simple, info] = simplifyProjection(varargin)
         for j=1:size(A,1)
             %[~,~,exitflag] = cplexlp(zeros(n,1), box.A, box.b, A(j,:), b(j,:));
             x = sdpvar(n,1);
-            C = [box.A*x<=b, A(j,:)*x == b(j,:)];
+            C = [box.A*x<=box.b, A(j,:)*x == b(j,:)];
             J = 0;
             result = optimize(C,J,sdpsettings('verbose',0));
             exitflag = result.problem;
