@@ -35,7 +35,7 @@ function info = generateProjection(varargin)
     elseif ~isempty(options.ub)
         dims.p = length(options.ub)-dims.n;
     else
-        throw(MException('MATLAB:proxop:generateProjection:Unbounded', 'No constraints defined.'));
+        throw(MException('MATLAB:pcg:generateProjection:Unbounded', 'No constraints defined.'));
     end
     
     %% Setup YALMIP variables

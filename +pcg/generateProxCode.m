@@ -25,7 +25,7 @@ function generateProxCode(varargin)
     [Mdata, Mcode] = pcg.generateMVMult(options.M, 'PROX_M', 'a', 'r', 'sym', true, 'nDataTabs', 0, 'nCodeTabs', 1);
     [gWdata, gWcode] = pcg.generateMVMult(options.stepSize*options.W, 'PROX_gW', 'a', 'r', 'sym', true, 'nDataTabs', 0, 'nCodeTabs', 1);
     
-    copyfile('+proxop/timer.h', [options.gendir '/timer.h']);
+    copyfile('+pcg/timer.h', [options.gendir '/timer.h']);
     f = fopen([options.gendir '/timer.h'], 'rt');
     code = fread(f, inf, 'char=>char');
     fclose(f);
@@ -33,7 +33,7 @@ function generateProxCode(varargin)
     f = fopen([options.gendir '/timer.h'], 'w');
     fprintf(f, code);
     fclose(f);
-    copyfile('+proxop/timer.c', [options.gendir '/timer.c']);
+    copyfile('+pcg/timer.c', [options.gendir '/timer.c']);
     
     % Generate fixed-point iteration C-file
     f = fopen([options.gendir '/project.h'], 'rt');
