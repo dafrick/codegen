@@ -30,9 +30,13 @@ function [simple, info] = simplifyProjection(varargin)
         isArtifact = false(size(A,1),1);
         % Iterate over all constraints
         for j=1:size(A,1)
-            [~,~,exitflag] = cplexlp(zeros(n,1), box.A, box.b, A(j,:), b(j,:));
-            
-            if exitflag == -2
+            %[~,~,exitflag] = cplexlp(zeros(n,1), box.A, box.b, A(j,:), b(j,:));
+            x = sdpvar(n,1);
+            C = [box.A*x<=b, A(j,:)*x == b(j,:)];
+            J = 0;
+            result = optimize(C,J,sdpsettings('verbose',0));
+            exitflag = result.problem;
+            if exitflag == 1
                 isArtifact(j) = true;
             end
         end
