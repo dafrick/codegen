@@ -91,7 +91,7 @@ function info = generateProjection(varargin)
     %% Generate explicit solution
     explicit = problem.solve();
     if options.simplify
-        sol = proxop.simplifyProjection(explicit.xopt.Set, options.infbound);
+        sol = pcg.simplifyProjection(explicit.xopt.Set, options.infbound);
     else
         sol = explicit.xopt.Set;
     end
