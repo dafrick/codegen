@@ -10,6 +10,7 @@ function [update] = generateSolver(varargin)
     p.addParameter('maxIt', 100);
     p.addParameter('stopOnThreshold', true);
     p.addParameter('overwriteSolver', false);
+    p.addParameter('lpSolver', 'yalmip', @(s)(any(strcmp(s,{'yalmip', 'cplex', 'gurobi'})))); % LP solver to use in code generation
     p.addParameter('gendir', './gen', @ischar);
     p.addParameter('verbose', 0, @(x)(isnumeric(x) && length(x) == 1 && x >= 0 && mod(x,1) == 1));
     p.parse(varargin{:});
@@ -41,7 +42,7 @@ function [update] = generateSolver(varargin)
             warning('off', 'MATLAB:MKDIR:DirectoryExists');
             mkdir(options.gendir);
             warning('on', 'MATLAB:MKDIR:DirectoryExists');
-            pcg.generateProjections(model, N, 'verbose', options.verbose, 'gendir', options.gendir);
+            pcg.generateProjections(model, N, 'verbose', options.verbose, 'gendir', options.gendir, 'lpSolver', options.lpSolver);
             % Generate problem-specific embedded code
             pcg.generateProxCode(M, W, model.dims.nr, 'verbose', options.verbose, 'stepSize', options.gamma, 'eps', options.eps, 'maxIt', options.maxIt, 'stopOnThreshold', options.stopOnThreshold);
         case 'no',

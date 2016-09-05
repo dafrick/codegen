@@ -17,6 +17,7 @@ function info = generateProjection(varargin)
     p.addParameter('gendir', './gen', @ischar);
     p.addParameter('verbose', 0, @isnumeric);
     p.addParameter('simplify', false, @islogical);
+    p.addParameter('lpSolver', 'yalmip', @(s)(any(strcmp(s,{'yalmip', 'cplex', 'gurobi'})))); % LP solver to use in code generation
     p.addParameter('bintree', true, @islogical);
     p.addParameter('infbound', 10000, @isnumeric);
     p.parse(varargin{:});
@@ -91,7 +92,7 @@ function info = generateProjection(varargin)
     %% Generate explicit solution
     explicit = problem.solve();
     if options.simplify
-        sol = pcg.simplifyProjection(explicit.xopt.Set, options.infbound);
+        sol = pcg.simplifyProjection(explicit.xopt.Set, options.infbound, 'lpSolver', options.lpSolver);
     else
         sol = explicit.xopt.Set;
     end

@@ -40,6 +40,7 @@ function generateProjections(varargin)
     p.addParameter('gendir', './gen', @ischar);
     p.addParameter('verbose', 0, @isnumeric);
     p.addParameter('generateProjections', true, @islogical);
+    p.addParameter('lpSolver', 'yalmip', @(s)(any(strcmp(s,{'yalmip', 'cplex', 'gurobi'})))); % LP solver to use in code generation
     p.addParameter('eps', 1e-4, @isnumeric);
     p.addParameter('ignoreConst', false, @islogical);
     p.parse(varargin{:});
@@ -123,7 +124,7 @@ function generateProjections(varargin)
             else
                 C.ub = [];
             end
-            pcg.generateProjection(['stdproj' num2str(i)], model.dims.n, 'gendir', options.gendir, 'verbose', options.verbose, 'simplify', true, C(:));
+            pcg.generateProjection(['stdproj' num2str(i)], model.dims.n, C(:), 'gendir', options.gendir, 'verbose', options.verbose, 'simplify', true, 'lpSolver', options.lpSolver);
             % Open code-generated file and modify for further processing
             pcg.processProjectionCode(options.gendir, ['stdproj' num2str(i)]);
 
@@ -155,7 +156,7 @@ function generateProjections(varargin)
             else
                 C.ub = [];
             end
-            pcg.generateProjection(['iniproj' num2str(i)], model.dims.nu+model.dims.nx, 'gendir', options.gendir, 'verbose', options.verbose, 'bintree', false, C(:));
+            pcg.generateProjection(['iniproj' num2str(i)], model.dims.nu+model.dims.nx, C(:), 'gendir', options.gendir, 'verbose', options.verbose, 'bintree', false, 'lpSolver', options.lpSolver);
             % Open code-generated file and modify for further processing
             pcg.processProjectionCode(options.gendir, ['iniproj' num2str(i)]);
 
@@ -174,7 +175,7 @@ function generateProjections(varargin)
             else
                 C.ub = [];
             end
-            pcg.generateProjection(['finproj' num2str(i)], model.dims.nx, 'gendir', options.gendir, 'verbose', options.verbose, 'simplify', false, C(:));
+            pcg.generateProjection(['finproj' num2str(i)], model.dims.nx, C(:), 'gendir', options.gendir, 'verbose', options.verbose, 'simplify', false, 'lpSolver', options.lpSolver);
             % Open code-generated file and modify for further processing
             pcg.processProjectionCode(options.gendir, ['finproj' num2str(i)]);
         end

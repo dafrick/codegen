@@ -43,6 +43,7 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     p.addParameter('xi', 10, @(x)(isnumeric(x))); % Proximal scaling
     % Code-generation parameters
     p.addParameter('gendir', './gen', @ischar);
+    p.addParameter('lpSolver', 'yalmip', @(s)(any(strcmp(s,{'yalmip', 'cplex', 'gurobi'})))); % LP solver to use in code generation
     % Simulation parameters
     p.addParameter('x0', [1; 1]); % Initial state
     p.addParameter('maxIt', 1000, @(x)(isnumeric(x) && length(x) == 1 && x > 0 && mod(x,1) == 0)); % Maximum number of iterations
@@ -147,7 +148,7 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     if options.verbose >= 1
         display('Generating solver...');
     end
-    update = pcg.generateSolver(model, N, H, h, xi, 'overwriteSolver', options.overwriteSolver, 'gendir', options.gendir, 'maxIt', options.maxIt, 'eps', options.ctol);
+    update = pcg.generateSolver(model, N, H, h, xi, 'overwriteSolver', options.overwriteSolver, 'gendir', options.gendir, 'maxIt', options.maxIt, 'eps', options.ctol, 'lpSolver', options.lpSolver);
     %% Get function to update  iteration data
     
     %% Run

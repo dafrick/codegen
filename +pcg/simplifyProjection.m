@@ -4,6 +4,7 @@ function [simple, info] = simplifyProjection(varargin)
     p.addRequired('infbound', @isnumeric);
     p.addParameter('eps', 10,@(x)(isnumeric(x) && x > 0)); % Epsilon to shrink infinity bound
     p.addParameter('verbose', 2, @isnumeric);
+    p.addParameter('lpSolver', 'yalmip', @(s)(any(strcmp(s,{'yalmip', 'cplex', 'gurobi'})))); % LP solver to use in code generation
     p.parse(varargin{:});
     options = p.Results;
     
@@ -30,14 +31,24 @@ function [simple, info] = simplifyProjection(varargin)
         isArtifact = false(size(A,1),1);
         % Iterate over all constraints
         for j=1:size(A,1)
-            %[~,~,exitflag] = cplexlp(zeros(n,1), box.A, box.b, A(j,:), b(j,:));
-            x = sdpvar(n,1);
-            C = [box.A*x<=box.b, A(j,:)*x == b(j,:)];
-            J = 0;
-            result = optimize(C,J,sdpsettings('verbose',0));
-            exitflag = result.problem;
-            if exitflag == 1
-                isArtifact(j) = true;
+            switch options.lpSolver
+                case 'yalmip',
+                    x = sdpvar(n,1);
+                    C = [box.A*x<=box.b, A(j,:)*x == b(j,:)];
+                    result = optimize(C,0,sdpsettings('verbose',0));
+                    if result.problem == 1 % Infeasible
+                        isArtifact(j) = true;
+                    end
+                case 'cplex',
+                    [~,~,exitflag] = cplexlp(zeros(n,1), box.A, box.b, A(j,:), b(j,:));
+                    if exitflag == -2 % Infeasible
+                        isArtifact(j) = true;
+                    end
+                case 'gurobi'
+                    result = gurobi(struct('obj', zeros(n,1), 'A', sparse([box.A; A(j,:)]), 'rhs', [box.b; b(j,:)], 'sense', [repmat('<',size(box.A,1),1); repmat('=',size(A(j,:),1),1)]),struct('outputflag', 0, 'DualReductions', 0));
+                    if any(strcmp(result.status, {'INFEASIBLE'})) % Infeasible
+                        isArtifact(j) = true;
+                    end
             end
         end
         % If some constraints of one region aren't artifacts
