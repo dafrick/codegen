@@ -1,4 +1,4 @@
-function [M, c, W, update] = getIterationData(H, h, N, dims, xi)
+function [M, c, W, update, xi] = getIterationData(H, h, N, dims, xi)
 
     % Build equality constraints
     Aeq = kron(eye(N), [zeros(dims.nx,dims.nu) eye(dims.nx) -eye(dims.nw)]);

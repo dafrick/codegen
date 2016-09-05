@@ -11,12 +11,15 @@
 %  nIt       - Number of iterations for each iteration
 % INPUT (optional):
 %  'solverName' - Name of the generated solver (Default: hybridMPC)
-%  'N' - Control horizon (Default: 10)
-%  'xi' - Proximal scaling (Default: 10)
-%  'x0' - Initial state (Default: [1;1])
-%  'stoppingCriterion' - 
-%  'tol' - Consensus tolerance, stopping criterion if stoppingCriterion is 'consensus' (Default: 1e-3)
-%  'maxIt' - Maximum number of iterations, stopping criterion if stoppingCriterion is 'maxIt' (Default: 1000)
+%  'N'          - Control horizon (Default: 10)
+%  'xi'         - Proximal scaling (Default: 10)
+%  'x0'         - Initial state (Default: [1;1])
+%  'stoppingCriterion' - Criterion used to terminate solver, can be either 'consensus' or 'maxIt' (Default: consensus)
+%  'tol'        - Consensus tolerance, stopping criterion if stoppingCriterion is 'consensus' (Default: 1e-3)
+%  'maxIt'      - Maximum number of iterations, stopping criterion if stoppingCriterion is 'maxIt' (Default: 1000)
+%  'gendir'     - Directory used to place generated code (Default: gen)
+%  'overwriteSolver'   - Whether solver should be overwritten (Default: true)
+%  'verbose'    - Determines verbosity of output, 0 is no output, 2 is full output (Default: 2)
 %
 % This example is taken from Example 4.1, p. 415 of
 % [A. Bemporad and M. Morari, “Control of systems integrating logic, dynamics, and constraints”,
@@ -45,7 +48,6 @@
 
 function [xs, us, consensus, ts, nIts] = example(varargin)
     %% Defining optional inputs as key-value pairs
-    % TODO: Clean up and document inputs
     p = inputParser;
     p.addParameter('N', 10, @(x)(isnumeric(x) && length(x) == 1 && x > 0 && mod(x,1) == 0)); % Prediction (or control) horizon N
     % Problem parameters
@@ -61,7 +63,7 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     p.addParameter('xi', 10, @(x)(isnumeric(x))); % Proximal scaling
     % Code-generation parameters
     p.addParameter('solverName', 'hybridMPC', @ischar); % Name of generated solver
-    p.addParameter('gendir', './gen', @ischar);
+    p.addParameter('gendir', './gen', @ischar); % Directory used to place generated solver (and auxiliary files)
     p.addParameter('lpSolver', 'yalmip', @(s)(any(strcmp(s,{'yalmip', 'cplex', 'gurobi'})))); % LP solver to use in code generation
     % Simulation parameters
     p.addParameter('x0', [1; 1]); % Initial state
@@ -70,7 +72,7 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     p.addParameter('stoppingCriterion', 'consensus', @(s)(any(strcmp(s,{'consensus', 'maxIt'})))); % Stopping criterion
     % Misc. parameters
     p.addParameter('overwriteSolver', false, @islogical); % Set to true to always overwrite the solver
-    p.addParameter('verbose', 2, @isnumeric);
+    p.addParameter('verbose', 2, @isnumeric); % Determines verbosity of output
     p.parse(varargin{:});
     options = p.Results;
     
@@ -87,7 +89,9 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     umin = options.umin;
     umax = options.umax;
     Hx = options.Hx;
+    hx = zeros(2,1);
     Hu = options.Hu;
+    hu = zeros(1,1);
     %% Parameters of the method
     xi = options.xi;
     %% Simulation parameters
@@ -156,24 +160,16 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     model.const.check = @(u, x, e) (all([x;u] >= model.const.lb-e & [x;u] <= model.const.ub+e));
     
     %% Optimization objective (strictly convex quadratic)
-    % Build big cost matrix and vector
-    H = kron(eye(N),blkdiag(Hu,0.5*Hx,0.5*Hx));
-    h = zeros(model.dims.nn,1);
-    %con = 0;
-    %problem.cost = struct('Hx', options.Hx, 'Hu', options.Hu, 'hx', zeros(model.dims.nx,1), 'hu', zeros(model.dims.nu,1), 'H', H, 'h', h, 'const', con);
-    %problem.N = options.N;
     
     %% Generate embedded solver
-    if options.verbose >= 1
-        display('Generating solver...');
-    end
-    update = pcg.generateSolver(model, N, H, h, xi, 'solverName', options.solverName, ...
-                                                    'overwriteSolver', options.overwriteSolver, ...
-                                                    'gendir', options.gendir, ...
-                                                    'stoppingCriterion', options.stoppingCriterion, ...
-                                                    'maxIt', options.maxIt, ...
-                                                    'ctol', options.ctol, ...
-                                                    'lpSolver', options.lpSolver); %#ok
+    [update, H, h, xi] = pcg.generateSolver(model, N, Hx, hx, Hu, hu, xi, ...
+                                                   'solverName', options.solverName, ...
+                                                   'overwriteSolver', options.overwriteSolver, ...
+                                                   'gendir', options.gendir, ...
+                                                   'stoppingCriterion', options.stoppingCriterion, ...
+                                                   'maxIt', options.maxIt, ...
+                                                   'ctol', options.ctol, ...
+                                                   'lpSolver', options.lpSolver); %#ok
     %% Get function to update  iteration data
     
     %% Run
@@ -194,8 +190,8 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     % Generate references
     ref.x = zeros(model.dims.nx,200);
     ref.u = zeros(model.dims.nu,200);
-    xs = [x0 zeros(dims.nx,nSteps)];
-    us = zeros(dims.nu,nSteps);
+    xs = [x0 zeros(model.dims.nx,nSteps)];
+    us = zeros(model.dims.nu,nSteps);
     
     for k=1:nSteps
         if options.verbose >= 1
@@ -237,6 +233,14 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
         else
             xs(:,k+1) = model.dyn.A{2}*xs(:,k) + model.dyn.B{2}*us(:,k) + model.dyn.c{2};
         end
+    end
+    
+    if options.verbose >= 2
+        figure();
+        subplot(2,1,1); plot(xs(1,:),xs(2,:)); axis equal; xlabel('state x_1'); ylabel('state x_2');
+        subplot(2,1,2); plot(us); xlabel('time step k'); ylabel('control input u');
+        figure();
+        semilogy(ts*1000); xlabel('time step k'); ylabel('Execution time in [ms]');
     end
 
 end
