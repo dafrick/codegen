@@ -209,7 +209,7 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
         sol = y;
         lambda(:,k) = xi*(sol-s); % Re-constructing multipliers
         switch options.stoppingCriterion
-            case 'consenus',
+            case 'consensus',
                 if nIt >= options.maxIt
                     warning('simulate:Prox:MaximumInterations', ['Embedded Prox: Maximum iterations limit exceeded, consensus is ' num2str(consensus(k)) '.']);
                 end
