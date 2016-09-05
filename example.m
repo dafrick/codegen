@@ -1,5 +1,23 @@
 %% Example 1, automatic code generation for hybrid model predictive control with piecewise affine (PWA) dynamics
 %
+% [x, u, consensus, t, nIt] = EXAMPLE(options)
+%
+% Generates code for and runs a closed-loop simulation of a hybrid MPC problem
+% OUTPUT:
+%  x         - Closed-loop state trajectory [x0 ... xN]
+%  u         - Closed-loop input trajectory [u0 ... uN-1]
+%  consensus - Final consensus violation ||z-y||^2 for each iteration
+%  t         - Execution time for each iteration
+%  nIt       - Number of iterations for each iteration
+% INPUT (optional):
+%  'solverName' - Name of the generated solver (Default: hybridMPC)
+%  'N' - Control horizon (Default: 10)
+%  'xi' - Proximal scaling (Default: 10)
+%  'x0' - Initial state (Default: [1;1])
+%  'stoppingCriterion' - 
+%  'tol' - Consensus tolerance, stopping criterion if stoppingCriterion is 'consensus' (Default: 1e-3)
+%  'maxIt' - Maximum number of iterations, stopping criterion if stoppingCriterion is 'maxIt' (Default: 1000)
+%
 % This example is taken from Example 4.1, p. 415 of
 % [A. Bemporad and M. Morari, “Control of systems integrating logic, dynamics, and constraints”,
 %  Automatica, vol. 35, no. 3, pp. 407–427, 1999.]
@@ -22,7 +40,7 @@
 %  0.5*x(k)'*Hx*x(k) + hx'*x(k) + 0.5*u(k)'*Hu*u(k) + hu'*u(k)
 % with
 %       [1 0]       [0]
-%  Hx = [0 1], hx = [0], Hu = 1, and hu = 0
+%  Hx = [0 1], hx = [0], Hu = 1, and hu = 0.
 %
 
 function [xs, us, consensus, ts, nIts] = example(varargin)
@@ -42,13 +60,14 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     % Iteration parameters
     p.addParameter('xi', 10, @(x)(isnumeric(x))); % Proximal scaling
     % Code-generation parameters
+    p.addParameter('solverName', 'hybridMPC', @ischar); % Name of generated solver
     p.addParameter('gendir', './gen', @ischar);
     p.addParameter('lpSolver', 'yalmip', @(s)(any(strcmp(s,{'yalmip', 'cplex', 'gurobi'})))); % LP solver to use in code generation
     % Simulation parameters
     p.addParameter('x0', [1; 1]); % Initial state
     p.addParameter('maxIt', 1000, @(x)(isnumeric(x) && length(x) == 1 && x > 0 && mod(x,1) == 0)); % Maximum number of iterations
     p.addParameter('ctol', 1e-3, @(x)(isnumeric(x) && length(x) == 1 && x >= eps)); % Consensus tolerance
-    p.addParameter('stopOnThreshold', true, @islogical); % If true, the iteration is ter,inated, when the consensus tolerance threshold is reached
+    p.addParameter('stoppingCriterion', 'consensus', @(s)(any(strcmp(s,{'consensus', 'maxIt'})))); % Stopping criterion
     % Misc. parameters
     p.addParameter('overwriteSolver', false, @islogical); % Set to true to always overwrite the solver
     p.addParameter('verbose', 2, @isnumeric);
@@ -148,44 +167,65 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     if options.verbose >= 1
         display('Generating solver...');
     end
-    update = pcg.generateSolver(model, N, H, h, xi, 'overwriteSolver', options.overwriteSolver, 'gendir', options.gendir, 'maxIt', options.maxIt, 'eps', options.ctol, 'lpSolver', options.lpSolver);
+    update = pcg.generateSolver(model, N, H, h, xi, 'solverName', options.solverName, ...
+                                                    'overwriteSolver', options.overwriteSolver, ...
+                                                    'gendir', options.gendir, ...
+                                                    'stoppingCriterion', options.stoppingCriterion, ...
+                                                    'maxIt', options.maxIt, ...
+                                                    'ctol', options.ctol, ...
+                                                    'lpSolver', options.lpSolver); %#ok
     %% Get function to update  iteration data
     
     %% Run
     % Add path to fixed-point iteration code
     addpath(options.gendir);
     % Warm-up projection
-    eprox(zeros(model.dims.nn,1), zeros(model.dims.n,1), zeros(model.dims.nn,1));
+    eval([options.solverName '(zeros(model.dims.nn,1), zeros(model.dims.n,1), zeros(model.dims.nn,1));']);
+    
+    nSteps = 10;
+    % Allocate memory
+    nIts = zeros(nSteps,1);
+    ts = zeros(nSteps,1);
+    consensus = zeros(nSteps,1);
+    lambda = zeros(model.dims.nn,nSteps);
+    obj = zeros(nSteps,N);
+    cviol = zeros(nSteps);
     
     % Generate references
     ref.x = zeros(model.dims.nx,200);
     ref.u = zeros(model.dims.nu,200);
-    xs = x0;
+    xs = [x0 zeros(dims.nx,nSteps)];
+    us = zeros(dims.nu,nSteps);
     
-    for k=1:10
+    for k=1:nSteps
         if options.verbose >= 1
             display(['Time k=' num2str(k) ', running embedded iteration...']);
         end
         % Setting up prox-iteration
-        best = inf;
+        best = inf; %#ok
         % Initializing
-        refs = reshape([ref.u(:,k:N+k-1); ref.x(:,k:N+k-1); ref.x(:,k:N+k-1)], [], 1);
+        refs = reshape([ref.u(:,k:N+k-1); ref.x(:,k:N+k-1); ref.x(:,k:N+k-1)], [], 1); %#ok
         % Run Fixed-point iteration
-        [x, y, sv, nIt, t] = eprox(zeros(model.dims.nn, 1), xs(:,k), update(h-H*refs));
+        [z, y, s, nIt, t] = eval([options.solverName '(zeros(model.dims.nn, 1), xs(:,k), update(h-H*refs));']);
         nIts(k) = nIt;
         ts(k) = t;
-        consensus(k) = norm(x-y,2);
-        z = y;
-        if options.stopOnThreshold && (nIt >= options.maxIt)
-            warning('simulate:Prox:MaximumInterations', ['Embedded Prox: Maximum iterations limit exceeded, consensus is ' num2str(consensus(k)) '.']);
+        consensus(k) = norm(z-y,2);
+        sol = y;
+        lambda(:,k) = xi*(sol-s); % Re-constructing multipliers
+        switch options.stoppingCriterion
+            case 'consenus',
+                if nIt >= options.maxIt
+                    warning('simulate:Prox:MaximumInterations', ['Embedded Prox: Maximum iterations limit exceeded, consensus is ' num2str(consensus(k)) '.']);
+                end
+            case 'maxIt',
+                if consensus(k) > options.ctol
+                    warning('simulate:Prox:InsufficientAccuracy', ['Embedded Prox: Consensus specification violated, consensus is ' num2str(consensus(k)) '.']);
+                end
         end
-        if ~options.stopOnThreshold && (consensus(k) > options.ctol)
-            warning('simulate:Prox:InsufficientAccuracy', ['Embedded Prox: Consensus specification violated, consensus is ' num2str(consensus(k)) '.']);
-        end
-        [x,u,w] = pcg.recoverStatesInputs(z, model.dims, 'auxiliaries', true);
+        [x,u,w] = pcg.recoverStatesInputs(sol, model.dims, 'auxiliaries', true);
         
         obj(k,:) = nan*ones(1,N);
-        cviol(k,:) = [norm(x-w,1),norm(x-w,2),norm(x-w,Inf)];
+        cviol(k) = norm(x-w,2);
         for l=1:N
             obj(k,l) = 0.5*(x(:,l)-ref.x(:,l))'*Hx*(x(:,l)-ref.x(:,l)) + 0.5*(u(:,l)-ref.u(:,l))'*Hu*(u(:,l)-ref.u(:,l));
         end

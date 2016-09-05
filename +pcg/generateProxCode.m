@@ -9,12 +9,14 @@ function generateProxCode(varargin)
     p.addRequired('W', @isnumeric);
     p.addRequired('nr', @isnumeric);
     p.addParameter('stepSize', 0.5, @(x)(isnumeric(x) && x > 0 && x < 1));
-    p.addParameter('maxIt', 1000, @isnumeric);
-    p.addParameter('eps', eps, @(x)(isnumeric(x) && x >= eps));
+    p.addParameter('maxIt', 1000, @(x)(isnumeric(x) && length(x) == 1 && x > 0 && mod(x,1) == 0)); % Maximum number of iterations
+    p.addParameter('ctol', 1e-3, @(x)(isnumeric(x) && length(x) == 1 && x >= eps)); % Consensus tolerance
+    p.addParameter('stoppingCriterion', 'consensus', @(s)(any(strcmp(s,{'consensus', 'maxIt'})))); % Stopping criterion
     p.addParameter('stopOnThreshold', true, @islogical);
     p.addParameter('gendir', './gen', @ischar);
     p.addParameter('verbose', 0, @isnumeric);
     p.addParameter('test', 0, @isnumeric);
+    p.addParameter('solverName', 'hybridMPC', @ischar); % Name of generated solver
     p.parse(varargin{:});
     options = p.Results;
     
@@ -22,8 +24,8 @@ function generateProxCode(varargin)
         display('Generating embedded fixed-point iteration...');
     end
     
-    [Mdata, Mcode] = pcg.generateMVMult(options.M, 'PROX_M', 'a', 'r', 'sym', true, 'nDataTabs', 0, 'nCodeTabs', 1);
-    [gWdata, gWcode] = pcg.generateMVMult(options.stepSize*options.W, 'PROX_gW', 'a', 'r', 'sym', true, 'nDataTabs', 0, 'nCodeTabs', 1);
+    [Mdata, Mcode] = pcg.generateMVMult(options.M, [upper(options.solverName) '_M'], 'a', 'r', 'sym', true, 'nDataTabs', 0, 'nCodeTabs', 1);
+    [gWdata, gWcode] = pcg.generateMVMult(options.stepSize*options.W, [upper(options.solverName) '_gW'], 'a', 'r', 'sym', true, 'nDataTabs', 0, 'nCodeTabs', 1);
     
     copyfile('+pcg/timer.h', [options.gendir '/timer.h']);
     f = fopen([options.gendir '/timer.h'], 'rt');
@@ -39,8 +41,8 @@ function generateProxCode(varargin)
     f = fopen([options.gendir '/project.h'], 'rt');
     code = fread(f, inf, 'char=>char');
     fclose(f);
-    code = strrep(code', '_PROJECT_H_', '_EPROX_H_');
-    f = fopen([options.gendir '/eprox.h'], 'w');
+    code = strrep(code', '_PROJECT_H_', ['_' upper(options.solverName) '_H_']);
+    f = fopen([options.gendir '/' options.solverName '.h'], 'w');
     fprintf(f, code);
     fclose(f);
     f = fopen([options.gendir '/project.c'], 'rt');
@@ -50,7 +52,7 @@ function generateProxCode(varargin)
     dim = dim{1}{1};
     n = str2num(dim);
     code = strrep(code', 'x', 's');
-    code = strrep(code, 'project.h', 'eprox.h"\n#include "timer.h');
+    code = strrep(code, 'project.h', [options.solverName '.h"\n#include "timer.h']);
     code = strrep(code, 'mes', 'mex');
     code = strrep(code, 'ms', 'mx');
     code = strrep(code, 'Matris', 'Matrix');
@@ -70,10 +72,10 @@ function generateProxCode(varargin)
         '\t\tr[i] = a[i]-b[i];' ...
         '\t}\n' ...
         '}\n\n' ...
-        'void mvmulPROX_M(double* a, unsigned int n, double* r) { /* r = r + PROX_M*a */\n' ...
+        'void mvmul' upper(options.solverName) '_M(double* a, unsigned int n, double* r) { /* r = r + ' upper(options.solverName) '_M*a */\n' ...
         Mcode ...
         '}\n' ...
-        'void mvmulPROX_gW(double* a, unsigned int n, double* r) { /* r = r + PROX_gW*a */\n' ...
+        'void mvmul' upper(options.solverName) '_gW(double* a, unsigned int n, double* r) { /* r = r + ' upper(options.solverName) '_gW*a */\n' ...
         gWcode ...
         '}\n\n' ...
         'double twonormsq(double* a, unsigned int n) { /* |a|^2 */\n' ...
@@ -95,21 +97,22 @@ function generateProxCode(varargin)
         '\twhile(1) {\n' ...
         '\t/* AFFINE MAP (1st step) */\n' ...
         '\tvcopy(c, ' dim ', y);/* y = c */\n' ...
-        '\tmvmulPROX_M(s, ' dim ', y); /* y = y + Ms = Ms+c */\n\n' ...
+        '\tmvmul' upper(options.solverName) '_M(s, ' dim ', y); /* y = y + Ms = Ms+c */\n\n' ...
         '\t/* PROJECTION (2nd step) */\n\t/* Initial state */']);
     repStr = ['$0\n\n' ...
         '\t/* S-UPDATE (3rd step) */\n' ...
         '\tvsub(z, y, ' dim ', d); /* d = z-y = -(y-z) */\n' ...
-        '\tmvmulPROX_gW(d, ' dim ', s); /* s = s + gWd = s - gW(y-z) */\n' ...
+        '\tmvmul' upper(options.solverName) '_gW(d, ' dim ', s); /* s = s + gWd = s - gW(y-z) */\n' ...
         '\n'];
-    if options.stopOnThreshold
-        repStr = [repStr ...
-        '\t/* CONSENSUS VIOLATION AND MAX ITERATION CHECK */\n' ...
-        '\tif(twonormsq(d, ' dim ') <= ' sprintf('%0.10g', options.eps^2) ' || it >= ' sprintf('%d', options.maxIt) ') {\n'];
-    else
-        repStr = [repStr ...
-        '\t/* MAX ITERATION CHECK */\n' ...
-        '\tif(it >= ' sprintf('%d', options.maxIt) ') {\n'];
+    switch options.stoppingCriterion
+        case 'consensus',
+            repStr = [repStr ...
+            '\t/* CONSENSUS VIOLATION AND MAX ITERATION CHECK */\n' ...
+            '\tif(twonormsq(d, ' dim ') <= ' sprintf('%0.10g', options.ctol^2) ' || it >= ' sprintf('%d', options.maxIt) ') {\n'];
+        case 'maxIt'
+            repStr = [repStr ...
+            '\t/* MAX ITERATION CHECK */\n' ...
+            '\tif(it >= ' sprintf('%d', options.maxIt) ') {\n'];
     end
     repStr = [repStr ...
         '\t\tnIt[0] = it;\n' ...
@@ -122,7 +125,7 @@ function generateProxCode(varargin)
     end
         repStr = [repStr '\t}'];
     code = regexprep(code, '(/. Final state ./.*\t\t\t})', repStr);
-    f = fopen([options.gendir '/eprox.c'], 'w');
+    f = fopen([options.gendir '/' options.solverName '.c'], 'w');
     fprintf(f, code);
     fclose(f);    
     
@@ -135,7 +138,7 @@ function generateProxCode(varargin)
     else
         compile = 'mex';
     end
-    compile = [compile ' -I"' options.gendir '" CFLAGS="$CFLAGS -Wall" ' options.gendir '/eprox.c ' options.gendir '/timer.c'];
+    compile = [compile ' -I"' options.gendir '" CFLAGS="$CFLAGS -Wall" ' options.gendir '/' options.solverName '.c ' options.gendir '/timer.c'];
     for i=1:options.nr
         compile = [compile ' ' options.gendir '/stdproj' num2str(i) '.c'];
         compile = [compile ' ' options.gendir '/iniproj' num2str(i) '.c'];
