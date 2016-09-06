@@ -1,4 +1,4 @@
-# Automatic code-generation tool for LIM for hybrid model predictive control
+# Automatic code-generation tool for hybrid MPC
 a low-complexity, iterative method for hybrid model predictive control 
 ## Introduction
 ## Installation instructions
