@@ -1,2 +1,3 @@
-# codegen
-Automatic code generation for hybrid MPC with PWA dynamics
+# Automatic code-generation for a low-complexity, iterative method for hybrid model predictive control 
+
+
