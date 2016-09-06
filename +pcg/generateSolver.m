@@ -77,7 +77,8 @@ function [update, xi] = generateSolver(varargin)
     p.addParameter('maxIt', 1000, @(x)(isnumeric(x) && length(x) == 1 && x > 0 && mod(x,1) == 0)); % Maximum number of iterations
     p.addParameter('ctol', 1e-3, @(x)(isnumeric(x) && length(x) == 1 && x >= eps)); % Consensus tolerance
     p.addParameter('stoppingCriterion', 'consensus', @(s)(any(strcmp(s,{'consensus', 'maxIt'})))); % Stopping criterion
-    p.addParameter('overwriteSolver', false);
+    p.addParameter('overwriteSolver', false, @islogical);
+    p.addParameter('overwriteProjections', true, @islogical);
     p.addParameter('lpSolver', 'yalmip', @(s)(any(strcmp(s,{'yalmip', 'cplex', 'gurobi'})))); % LP solver to use in code generation
     p.addParameter('gendir', './gen', @ischar);
     p.addParameter('verbose', 0, @(x)(isnumeric(x) && length(x) == 1 && x >= 0 && mod(x,1) == 1));
@@ -115,7 +116,9 @@ function [update, xi] = generateSolver(varargin)
             warning('off', 'MATLAB:MKDIR:DirectoryExists');
             mkdir(options.gendir);
             warning('on', 'MATLAB:MKDIR:DirectoryExists');
-            pcg.generateProjections(model, N, 'verbose', options.verbose, 'gendir', options.gendir, 'lpSolver', options.lpSolver);
+            if options.overwriteProjections
+                pcg.generateProjections(model, N, 'verbose', options.verbose, 'gendir', options.gendir, 'lpSolver', options.lpSolver);
+            end
             % Generate problem-specific embedded code
             pcg.generateProxCode(M, W, model.dims.nr, 'solverName', options.solverName, ...
                                                       'verbose', options.verbose, ...
