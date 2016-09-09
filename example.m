@@ -193,6 +193,8 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     xs = [x0 zeros(model.dims.nx,nSteps)];
     us = zeros(model.dims.nu,nSteps);
     
+    s = zeros(model.dims.nn,1);
+    
     for k=1:nSteps
         if options.verbose >= 1
             display(['Time k=' num2str(k) ', running embedded iteration...']);
@@ -202,7 +204,7 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
         % Initializing
         refs = reshape([ref.u(:,k:N+k-1); ref.x(:,k:N+k-1); ref.x(:,k:N+k-1)], [], 1); %#ok
         % Run Fixed-point iteration
-        [z, y, s, nIt, t] = eval([options.solverName '(zeros(model.dims.nn, 1), xs(:,k), update(refs));']);
+        [z, y, s, nIt, t] = eval([options.solverName '(s, xs(:,k), update(refs));']);
         nIts(k) = nIt;
         ts(k) = t;
         consensus(k) = norm(z-y,2);

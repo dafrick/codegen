@@ -71,17 +71,17 @@ function [update, xi] = generateSolver(varargin)
     p.addRequired('hxlin');
     p.addRequired('Hu');
     p.addRequired('hulin');
-    p.addRequired('xi');
+    p.addRequired('xi'); % Proximal scaling
     p.addParameter('solverName', 'hybridMPC', @ischar); % Name of generated solver
-    p.addParameter('gamma', 0.5);
+    p.addParameter('gamma', 0.5); % Iteration step size
     p.addParameter('maxIt', 1000, @(x)(isnumeric(x) && length(x) == 1 && x > 0 && mod(x,1) == 0)); % Maximum number of iterations
     p.addParameter('ctol', 1e-3, @(x)(isnumeric(x) && length(x) == 1 && x >= eps)); % Consensus tolerance
     p.addParameter('stoppingCriterion', 'consensus', @(s)(any(strcmp(s,{'consensus', 'maxIt'})))); % Stopping criterion
-    p.addParameter('overwriteSolver', false, @islogical);
-    p.addParameter('overwriteProjections', true, @islogical);
+    p.addParameter('overwriteSolver', false, @islogical); % Whether the solver should be overwrittem
+    p.addParameter('overwriteProjections', true, @islogical); % Whether the projections should be overwritten
     p.addParameter('lpSolver', 'yalmip', @(s)(any(strcmp(s,{'yalmip', 'cplex', 'gurobi'})))); % LP solver to use in code generation
-    p.addParameter('gendir', './gen', @ischar);
-    p.addParameter('verbose', 0, @(x)(isnumeric(x) && length(x) == 1 && x >= 0 && mod(x,1) == 1));
+    p.addParameter('gendir', './gen', @ischar); % Directory used to place generated solver (and auxiliary files)
+    p.addParameter('verbose', 0, @(x)(isnumeric(x) && length(x) == 1 && x >= 0 && mod(x,1) == 1));  % Determines verbosity of output
     p.parse(varargin{:});
     options = p.Results;
     
