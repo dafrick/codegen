@@ -49,7 +49,9 @@
 %  Hu - Quadratic input-cost matrix
 %  hu - Linear input-cost
 % OUTPUT:
-%  update
+%  update       - A function for updating the linear part of the iteration with changing reference.
+%                 Usage: c = update(ref), where ref is a vector of
+%                 dimension N*(nu+2*nx), taking [uref1; xref2; xref2; uref2; xref3; xref3; ... ; urefN; xref(N+1); xref(N+1)]
 % INPUT (optional):
 %  'solverName' - Name of the generated solver (Default: hybridMPC)
 %  'N'          - Control horizon (Default: 10)
