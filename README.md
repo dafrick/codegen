@@ -8,4 +8,4 @@ Make sure you have installed the [multi-parametric toolbox](http://control.ee.et
 ### Example
 A simple example (example.m) illustrates the use of the tool. It can be run by typing ```example()``` while in the directory of the too.
 ### Generate solver
-```pcg.generateSolver()``` is the function that generates a parametric solver for a given problem.
+```pcg.generateSolver()``` is the function that generates a parametric solver for a given problem. Just type ```help pcg.generateSolver``` in MATLAB to find out more.
