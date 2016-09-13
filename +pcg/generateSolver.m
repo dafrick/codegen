@@ -52,27 +52,31 @@
 %  update       - A function for updating the linear part of the iteration with changing reference.
 %                 Usage: c = update(ref), where ref is a vector of
 %                 dimension N*(nu+2*nx), taking [uref1; xref2; xref2; uref2; xref3; xref3; ... ; urefN; xref(N+1); xref(N+1)]
+% xi            - The used xi (may have been adjusted from the initially selected xi)
 % INPUT (optional):
 %  'solverName' - Name of the generated solver (Default: hybridMPC)
 %  'N'          - Control horizon (Default: 10)
 %  'xi'         - Proximal scaling (Default: 10)
 %  'x0'         - Initial state (Default: [1;1])
 %  'stoppingCriterion' - Criterion used to terminate solver, can be either 'consensus' or 'maxIt' (Default: consensus)
-%  'tol'        - Consensus tolerance, stopping criterion if stoppingCriterion is 'consensus' (Default: 1e-3)
+%  'ctol'        - Consensus tolerance, stopping criterion if stoppingCriterion is 'consensus' (Default: 1e-3)
 %  'maxIt'      - Maximum number of iterations, stopping criterion if stoppingCriterion is 'maxIt' (Default: 1000)
 %  'gendir'     - Directory used to place generated code (Default: gen)
-%  'overwriteSolver'   - Whether solver should be overwritten (Default: true)
+%  'overwriteSolver'      - Whether solver should be overwritten (Default: true)
+%  'overwriteProjections' - Whether projections code should be overwritten (Default: true), 
+%                            Can be set to false, e.g. if the model was not changed
 %  'verbose'    - Determines verbosity of output, 0 is no output, 2 is full output (Default: 2)
+%  'lpSolver'   - What should be used as an LP solver (choices are yalmip, gurobi, cplex)
 %
 
 function [update, xi] = generateSolver(varargin)
     p = inputParser;
-    p.addRequired('model', @isstruct);
-    p.addRequired('N', @(x)(isnumeric(x) && length(x) == 1 && x > 0 && mod(x,1) == 0));
-    p.addRequired('Hx');
-    p.addRequired('hxlin');
-    p.addRequired('Hu');
-    p.addRequired('hulin');
+    p.addRequired('model', @isstruct); % Model if dynamics and constraints
+    p.addRequired('N', @(x)(isnumeric(x) && length(x) == 1 && x > 0 && mod(x,1) == 0)); % Control horizon
+    p.addRequired('Hx', @isnumerical);
+    p.addRequired('hxlin', @isnumerical);
+    p.addRequired('Hu', @isnumerical);
+    p.addRequired('hulin', @isnumerical);
     p.addRequired('xi'); % Proximal scaling
     p.addParameter('solverName', 'hybridMPC', @ischar); % Name of generated solver
     p.addParameter('gamma', 0.5); % Iteration step size
