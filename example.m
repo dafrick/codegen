@@ -19,7 +19,7 @@
 %  'maxIt'      - Maximum number of iterations, stopping criterion if stoppingCriterion is 'maxIt' (Default: 1000)
 %  'gendir'     - Directory used to place generated code (Default: gen)
 %  'overwriteSolver'   - Whether solver should be overwritten (Default: true)
-%  'verbose'    - Determines verbosity of output, 0 is no output, 2 is full output (Default: 2)
+%  'verbose'    - Determines verbosity of output, 0 is no output, 3 is full output (Default: 2)
 %
 % This example is taken from Example 4.1, p. 415 of
 % [A. Bemporad and M. Morari, “Control of systems integrating logic, dynamics, and constraints”,
@@ -162,6 +162,7 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
     %% Optimization objective (strictly convex quadratic)
     
     %% Generate embedded solver
+    %%%%%% CALL TO AUTOMATIC CODEGENERATION TOOL %%%%%%
     [update, xi] = pcg.generateSolver(model, N, Hx, hx, Hu, hu, xi, ...
                                                    'solverName', options.solverName, ...
                                                    'overwriteSolver', options.overwriteSolver, ...
@@ -170,13 +171,10 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
                                                    'maxIt', options.maxIt, ...
                                                    'ctol', options.ctol, ...
                                                    'lpSolver', options.lpSolver); %#ok
-    %% Get function to update  iteration data
     
     %% Run
     % Add path to fixed-point iteration code
     addpath(options.gendir);
-    % Warm-up projection
-    eval([options.solverName '(zeros(model.dims.nn,1), zeros(model.dims.n,1), zeros(model.dims.nn,1));']);
     
     nSteps = 10;
     % Allocate memory
@@ -199,12 +197,12 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
         if options.verbose >= 1
             display(['Time k=' num2str(k) ', running embedded iteration...']);
         end
-        % Setting up prox-iteration
-        best = inf; %#ok
         % Initializing
-        refs = reshape([ref.u(:,k:N+k-1); ref.x(:,k:N+k-1); ref.x(:,k:N+k-1)], [], 1); %#ok
+        refs = reshape([ref.u(:,k:N+k-1); ref.x(:,k:N+k-1); ref.x(:,k:N+k-1)], [], 1);
+        % Update linear part of iteration
+        c = update(refs); %#ok Update linear part of iteration
         % Run Fixed-point iteration
-        [z, y, s, nIt, t] = eval([options.solverName '(s, xs(:,k), update(refs));']);
+        [z, y, s, nIt, t] = eval([options.solverName '(s, xs(:,k), c);']);
         nIts(k) = nIt;
         ts(k) = t;
         consensus(k) = norm(z-y,2);
@@ -213,11 +211,11 @@ function [xs, us, consensus, ts, nIts] = example(varargin)
         switch options.stoppingCriterion
             case 'consensus',
                 if nIt >= options.maxIt
-                    warning('simulate:Prox:MaximumInterations', ['Embedded Prox: Maximum iterations limit exceeded, consensus is ' num2str(consensus(k)) '.']);
+                    warning('simulate:it:MaximumInterations', ['Embedded iteration: Maximum iterations limit exceeded, consensus is ' num2str(consensus(k)) '.']);
                 end
             case 'maxIt',
                 if consensus(k) > options.ctol
-                    warning('simulate:Prox:InsufficientAccuracy', ['Embedded Prox: Consensus specification violated, consensus is ' num2str(consensus(k)) '.']);
+                    warning('simulate:it:InsufficientAccuracy', ['Embedded iteration: Consensus specification violated, consensus is ' num2str(consensus(k)) '.']);
                 end
         end
         [x,u,w] = pcg.recoverStatesInputs(sol, model.dims, 'auxiliaries', true);
