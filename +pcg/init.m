@@ -6,8 +6,8 @@ function init()
     %% Check if MPT is installed
     p = which('mpt_init');
     if isempty(p)
-        error(['The multi-parametric toolbox (MPT) could not be found. Please make sure it is set-up correcly and try again.\n' ...
-               'Instructions on how to install it can be found on http://control.ee.ethz.ch/~mpt/3/Main/Installation']);
+        error(sprintf(['The multi-parametric toolbox (MPT) could not be found. Please make sure it is set-up correcly and try again.\n' ...
+               'Instructions on how to install it can be found on http://control.ee.ethz.ch/~mpt/3/Main/Installation']));
     end
     %% Check for lp solvers
     py = which('yalmip');
