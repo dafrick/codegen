@@ -32,6 +32,9 @@
 %     - Aeq, a matrix of dimension (m)x(nx+nu) and
 %     - beq, a vector of length m containing the
 %        equality constraints Aeq*[x; u] = beq
+%              - terminal, lower, upper bounds, equality and inequality
+%                 constraints for the terminal state constraints
+%
 
 function generateProjections(varargin)
     p = inputParser;
@@ -165,16 +168,26 @@ function generateProjections(varargin)
             %
             % Constuct constraint data
             C = [];
-            if ~isempty(lb{i})
-                C.lb = lb{i}(1:model.dims.nx);
+            if ~isfield(model,'terminal') || ... 
+               ~(isfield(model.terminal, 'Aeq') && ~isempty(model.terminal.Aeq)) || ...
+               ~(isfield(model.terminal, 'Aineq') && ~isempty(model.terminal.Aineq)) || ...
+               ~(isfield(model.terminal, 'lb') && ~isempty(model.terminal.lb)) || ...
+               ~(isfield(model.terminal, 'ub') && ~isempty(model.terminal.ub))
+                warning('pcg:generateProjections:NoTerminalConstraint','Terminal state constraint undefined. Using upper and lower bounds.');
+                if ~isempty(lb{i})
+                    C.lb = lb{i}(1:model.dims.nx);
+                else
+                    C.lb = [];
+                end
+                if ~isempty(ub{i})
+                    C.ub = ub{i}(1:model.dims.nx);
+                else
+                    C.ub = [];
+                end
             else
-                C.lb = [];
+                C = model.terminal;
             end
-            if ~isempty(ub{i})
-                C.ub = ub{i}(1:model.dims.nx);
-            else
-                C.ub = [];
-            end
+
             pcg.generateProjection(['finproj' num2str(i)], model.dims.nx, C(:), 'gendir', options.gendir, 'verbose', options.verbose, 'simplify', false, 'lpSolver', options.lpSolver);
             % Open code-generated file and modify for further processing
             pcg.processProjectionCode(options.gendir, ['finproj' num2str(i)]);

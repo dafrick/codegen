@@ -9,7 +9,10 @@
 %                                         dyn.Aeq{i}[x{k}; u{k}] = dyn.beq{i}.
 %       const.lb <= [x{k}; u{k}] <= const.ub,
 %       const.Aineq*[x{k}; u{k}] <= const.bineq, and
-%       const.Aeq[x{k}; u{k}] = const.beq.
+%       const.Aeq*[x{k}; u{k}] = const.beq,
+%       const.terminal.lb <= x{N+1} <= const.terminal.ub,
+%       const.terminal.Aineq*x{N+1} <= const.terminal.bineq, and
+%       const.terminal.Aeq*x{N+1} = const.terminal.beq,
 %
 % Generates code for a hybrid MPC problem
 % INPUT:
@@ -43,6 +46,8 @@
 %              - Aeq, a matrix of dimension (m)x(nx+nu) and
 %              - beq, a vector of length m containing the
 %                 equality constraints Aeq*[x; u] = beq
+%              - terminal, lower, upper bounds, equality and inequality
+%                 constraints for the terminal state constraint
 %  N - Control horizon
 %  Hx - Quadratic state-cost matrix
 %  hx - Linear state-cost
