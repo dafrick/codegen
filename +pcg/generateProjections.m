@@ -125,8 +125,6 @@ function generateProjections(varargin)
                 C.ub = [];
             end
             pcg.generateProjection(['stdproj' num2str(i)], model.dims.n, C(:), 'gendir', options.gendir, 'verbose', options.verbose, 'simplify', true, 'lpSolver', options.lpSolver);
-            % Open code-generated file and modify for further processing
-            pcg.processProjectionCode(options.gendir, ['stdproj' num2str(i)]);
 
             % Initial stage projection
             %          [theta]                   [theta]
@@ -157,8 +155,6 @@ function generateProjections(varargin)
                 C.ub = [];
             end
             pcg.generateProjection(['iniproj' num2str(i)], model.dims.nu+model.dims.nx, C(:), 'gendir', options.gendir, 'verbose', options.verbose, 'bintree', false, 'lpSolver', options.lpSolver);
-            % Open code-generated file and modify for further processing
-            pcg.processProjectionCode(options.gendir, ['iniproj' num2str(i)]);
 
             % Final stage projection
             %
@@ -176,8 +172,6 @@ function generateProjections(varargin)
                 C.ub = [];
             end
             pcg.generateProjection(['finproj' num2str(i)], model.dims.nx, C(:), 'gendir', options.gendir, 'verbose', options.verbose, 'simplify', false, 'lpSolver', options.lpSolver);
-            % Open code-generated file and modify for further processing
-            pcg.processProjectionCode(options.gendir, ['finproj' num2str(i)]);
         end
     end
     
