@@ -1,10 +1,9 @@
-%%
+%% Automatic code generation for parametric projection using MPT3 
 %
-% Aeq*x + Ceq*w == beq
-% Aineq*x + Cineq*w <= bineq
+% info = GENERATEPROJECTIONMPT(name, n, 'Aeq', Aeq, 'beq', beq, 'Aineq', Ainq, 'bineq', bineq, 'lb', lb, 'ub', ub, options)
 % 
 
-function info = generateProjection(varargin)
+function info = generateMPTProjection(varargin)
     p = inputParser;
     p.addRequired('name', @ischar);
     p.addRequired('n', @(x) (isnumeric(x) && x>0));
@@ -36,7 +35,7 @@ function info = generateProjection(varargin)
     elseif ~isempty(options.ub)
         dims.p = length(options.ub)-dims.n;
     else
-        throw(MException('MATLAB:pcg:generateProjection:Unbounded', 'No constraints defined.'));
+        throw(MException('MATLAB:pcg:generateMPTProjection:Unbounded', 'No constraints defined.'));
     end
     
     %% Setup YALMIP variables
@@ -113,6 +112,21 @@ function info = generateProjection(varargin)
     else
         explicit.xopt.toC('primal', filename);
     end
+    
+    %%  Process code
+    f = fopen([filename '.c'], 'rt');
+    code = fread(f, inf, 'char=>char');
+    fclose(f);
+    % Modify
+    code = strrep(code', '#define MPT_NR', '#include "project.h"\n\n#define MPT_NR');
+    code = strrep(code, ['static unsigned long ' options.name], ['unsigned long ' options.name]);
+    code = strrep(code, ['static long ' options.name], ['unsigned long ' options.name]);
+    code = strrep(code, 'static double MPT_ST', 'static const double MPT_ST');
+    code = strrep(code, 'static double MPT_F', 'static const double MPT_F');
+    code = strrep(code, 'static double MPT_G', 'static const double MPT_G');
+    f = fopen([filename '.c'], 'wt');
+    fprintf(f, code);
+    fclose(f);
     
     %% Cleanup
     delete([filename '_mex.c']);

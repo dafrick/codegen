@@ -1,6 +1,6 @@
 function processProjectionCode(dir, filename)
 
-    % Open file and ged code in large string
+    % Open file and get code in large string
     f = fopen([dir '/' filename '.c'], 'rt');
     code = fread(f, inf, 'char=>char');
     fclose(f);
