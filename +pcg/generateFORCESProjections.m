@@ -312,6 +312,17 @@ function generateFORCESProjections(varargin)
                 '\t' 'plhs[0] = mxCreateDoubleMatrix(%i,%i,mxREAL); \n' ...
                 '\t' 'double* z = mxGetPr(plhs[0]); /* Projection */\n'], model.dims.nn, model.dims.nr);
     fprintf(f, ['\t' 'project(x, theta, z);\n']);
+    fprintf(f, ['\t' 'if(nlhs > 1) {\n' ...
+                '\t' '\t' 'plhs[1] = mxCreateDoubleMatrix(%i,%i,mxREAL);\n' ...
+                '\t' '\t' 'double* C = mxGetPr(plhs[1]); /* Projection costs */\n' ...
+                '\t' '\t' 'unsigned int i,k;\n'], options.N+1, model.dims.nr);
+    fprintf(f, ['\t' '\t' 'for(i=0; i<%i; i++) {\n'], model.dims.nr);
+    fprintf(f, ['\t' '\t' '\t' 'C[i*%i] = vdist(&x[0], &z[i*%i], %i); /* Initial stage */\n'], options.N+1, model.dims.nn, model.dims.nx+model.dims.nu);
+    fprintf(f, ['\t' '\t' '\t' 'for(k=0; k<%i; k++) { C[i*%i+k+1] = vdist(&x[%i+k*%i], &z[i*%i+%i+k*%i], %i); } /* Standard stage */\n'], options.N-1, options.N+1, model.dims.nx+model.dims.nu, model.dims.n, model.dims.nn, model.dims.nx+model.dims.nu, model.dims.n, model.dims.n);
+    fprintf(f, ['\t' '\t' '\t', 'C[i*%i+%i] = vdist(&x[%i], &z[%i*i+%i], %i); /* Final stage */\n'], options.N+1, options.N, model.dims.nn-model.dims.nx, model.dims.nn, model.dims.nn-model.dims.nx, model.dims.nx);
+    fprintf(f, ['\t' '\t' '}\n' ...
+                '\t' '}\n']);
+    fprintf(f, '}\n');
     fclose(f);
     
     if options.verbose >= 1
