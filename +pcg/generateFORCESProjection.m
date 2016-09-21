@@ -1,291 +1,186 @@
-%% Automatic code generation for parametric projection using MPT3 
-%
-% info = GENERATEFORCESPROJECTION(name, n, 'Aeq', Aeq, 'beq', beq, 'Aineq', Ainq, 'bineq', bineq, 'lb', lb, 'ub', ub, options)
+% GENERATEPROJECTIONS Generate a projection .mex file using MPT3
 % 
+% generateProjections(model, 'par1', val1, 'par2', val2, ...)
+% 
+% - model needs to contain structs
+%   - dims, with the problem dimensions
+%     - nx, number of states
+%     - nu, number of inputs
+%     - nw, number of auxiliaries - needs to be equal to nx
+%     - nr, number of regions of the PWA dyamics
+%     - n, number of decision variables per stage (= nx+nu+nw),
+%     - nn, number of decision variables (= n*N)
+%   - dyn, with the description of the model dynamics
+%     - lb, a cell of length nr containing the region lower bounds [xmin; umin]
+%     - ub, a cell of length nr containing the region upper bounds [xmax; umax]
+%     - Aineq, a cell of length nr with a matrix of dimension (m)x(nx+nu) and
+%     - bineq, a cell of length nr with a vector of length m containing the
+%        region inequality constraints Aineq*[x; u] <= bineq
+%     - Aeq, a cell of length nr with a matrix of dimension (m)x(nx+nu) and
+%     - beq, a cell of length nr with a vector of length m containing the
+%        region equality constraints Aeq*[x; u] = beq
+%     - A, a cell of length nr with a matrix of dimension (nx)x(nx) and
+%     - B, a cell of length nr with a matrix of dimension (nx)x(nu) and
+%     - c, a cell of length nr with a vector of length nx containing the
+%        region dynamics x(k+1) = Ax(k) + Bu(k) +c
+%   - const, with the description of the operating constraints
+%     - lb, a vector of lower bounds [xmin; umin]
+%     - ub, a vector of upper bounds [xmax; umax]
+%     - Aineq, matrix of dimension (m)x(nx+nu) and
+%     - bineq, a vector of length m containing the 
+%        inequality constraints Aineq*[x; u] <= bineq
+%     - Aeq, a matrix of dimension (m)x(nx+nu) and
+%     - beq, a vector of length m containing the
+%        equality constraints Aeq*[x; u] = beq
 
-function info = generateFORCESProjection(varargin)
+function generateFORCESProjection(varargin)
     p = inputParser;
-    p.addRequired('name', @ischar);
-    p.addParameter('B', [], @(x)(isnumeric(x) || iscell(x)))
-    p.addParameter('A', [], @(x)(isnumeric(x) || iscell(x)))
-    p.addParameter('c', [], @(x)(isnumeric(x) || iscell(x)))
-    p.addParameter('Aeq', [], @(x)(isnumeric(x) || iscell(x)));
-    p.addParameter('beq', [], @(x)(isnumeric(x) || iscell(x)));
-    p.addParameter('Aineq', [], @(x)(isnumeric(x) || iscell(x)));
-    p.addParameter('bineq', [], @(x)(isnumeric(x) || iscell(x)));
-    p.addParameter('lb', [], @(x)(isnumeric(x) || iscell(x)));
-    p.addParameter('ub', [], @(x)(isnumeric(x) || iscell(x)));
-    p.addParameter('parametrize', struct(), @isstruct);
+    p.addRequired('model', @isstruct);
+    p.addRequired('N', @(x)(isnumeric(x) && length(x) == 1 && x > 0 && mod(x,1) == 0));
     p.addParameter('gendir', './gen', @ischar);
     p.addParameter('verbose', 0, @isnumeric);
+    p.addParameter('generateProjections', true, @islogical);
+    p.addParameter('lpSolver', 'yalmip', @(s)(any(strcmp(s,{'yalmip', 'cplex', 'gurobi'})))); % LP solver to use in code generation
+    p.addParameter('eps', 1e-4, @isnumeric);
+    p.addParameter('large', 1e3, @isnumeric);
+    p.addParameter('ignoreConst', false, @islogical);
+    p.addParameter('name', 'allinone', @ischar);
     p.parse(varargin{:});
     options = p.Results;
+    model = options.model;
     
-    %% Sanity check
-    if isempty(options.Aeq) && isempty(options.Aineq) && isempty(options.lb) && isempty(options.ub)
-        throw(MException('MATLAB:pcg:generateFORCESProjection:Unbounded', 'No constraints defined.'));
+    % Consistency checks
+    if model.dims.nx ~= model.dims.nw
+        throw(MException('generateFORCESProjections:InvalidDimensions', ['The dimension of the states nx=' num2str(model.dims.nx) ' needs to match the dimension of the auxiliaries nw=' num2str(model.dims.nw) '.']));
     end
-    % TODO: Add more sanity checks
-    
-    %% Setup FORCES problem
-    % Distinguish between two cases
-    paramIdx = 0;
-    if ~isempty(options.A)
-        stages = MultistageProblem(2);
-        % Find largest necessary "state" dimensions
-        if ~iscell(options.A)
-            stages(1).dims.n = size(options.A,2);
-            stages(2).dims.n = size(options.A,1);
-        else
-            stages(1).dims.n = 0;
-            stages(2).dims.n = 0;
-            for i=1:length(options.A)
-                stages(1).dims.n = max(stages(1).dims.n, size(options.A{i},2));
-                stages(2).dims.n = max(stages(2).dims.n, size(options.A{i},1));
-            end
-        end
-        % Cost
-        stages(1).cost.H = eye(stages(1).dims.n);
-        paramIdx = paramIdx+1; parameters(paramIdx) = newParam('x', 1, 'cost.f');
-        stages(2).cost.H = eye(stages(2).dims.n);
-        paramIdx = paramIdx+1; parameters(paramIdx) = newParam('w', 2, 'cost.f');
-        % Dynamics
-        stages(2).dims.r = stages(2).dims.n;
-        if ~iscell(options.A)
-            stages(1).C = options.A;
-        else
-            paramIdx = paramIdx+1; parameters(paramIdx) = newParam('A', 1, 'eq.C');
-        end
-        if isempty(options.B)
-            stages(2).eq.D = -eye(stages(2).dims.n);
-        elseif ~iscell(options.B)
-            stages(2).eq.D = -options.B;
-        else
-            paramIdx = paramIdx+1; parameters(paramIdx) = newParam('B', 2, 'eq.D');
-        end
-        if isempty(options.c)
-            stages(2).eq.c = zeros(stages(2).dims.n,1);
-        elseif ~iscell(options.c)
-            stages(2).eq.c = -options.c;
-        else
-            paramIdx = paramIdx+1; parameters(paramIdx) = newParam('c', 2, 'eq.c');
-        end
-        % Equality constraints
-        if isempty(options.Aeq)
-            stages(1).dims.r = 0;
-        elseif ~iscell(options.Aeq)
-            stages(1).dims.r = size(options.Aeq,1);
-            stages(1).eq.D = options.Aeq;
-            stages(1).eq.c = options.beq;
-        else
-            stages(1).dims.r = 0;
-            for i=1:length(options.Aeq)
-                stages(1).dims.r = max(stages(1).dims.r, size(options.Aeq{i},1));
-            end
-            paramIdx = paramIdx+1; parameters(paramIdx) = newParam('Aeq', 1, 'eq.D');
-            paramIdx = paramIdx+1; parameters(paramIdx) = newParam('beq', 1, 'eq.c');
-        end
-        % Inequality constraints
-        if isempty(options.Aineq)
-            stages(1).dims.p = 0;
-        elseif ~iscell(options.Aineq)
-            stages(1).dims.p = size(options.Aineq,1);
-            stages(1).ineq.p.A = options.Aineq;
-            stages(1).ineq.p.b = options.bineq;
-        else
-            stages(1).dims.p = 0;
-            for i=1:length(options.Aineq)
-                stages(1).dims.p = max(stages(1).dims.p, size(options.Aineq{i},1));
-            end
-            paramIdx = paramIdx+1; parameters(paramIdx) = newParam('Aineq', 1, 'ineq.p.A');
-            paramIdx = paramIdx+1; parameters(paramIdx) = newParam('bineq', 1, 'ineq.p.b');
-        end
-        stages(2).dims.p = 0;
-        % Lower bounds
-        if isempty(options.lb)
-            stages(1).dims.l = 0;
-        elseif ~iscell(options.lb)
-            stages(1).dims.l = sum(~isinf(options.lb));
-            stages(1).ineq.b.lbidx = subsref((1:stages(1).dims.n)',struct('type', '()', 'subs', {{~isinf(options.lb)}})); % index vector for lower bounds
-            stages(1).ineq.b.lb = options.lb(stages(1).ineq.b.lbidx); % lower bounds
-        else
-            stages(1).dims.l = 0;
-            stages(1).ineq.b.lbidx = [];
-            for i=1:length(options.lb)
-                stages(1).dims.l = max(stages(1).dims.l, sum(~isinf(options.lb{i})));
-                stages(1).ineq.b.lbidx = sort(unique([stages(1).ineq.b.lbidx; subsref((1:length(options.lb{i}))',struct('type', '()', 'subs', {{~isinf(options.lb{i})}}))]));
-            end
-            paramIdx = paramIdx+1; parameters(paramIdx) = newParam('lb', 1, 'ineq.b.lb');
-        end
-        stages(2).dims.l = 0;
-        % Upper bounds
-        if isempty(options.ub)
-            stages(1).dims.u = 0;
-        elseif ~iscell(options.ub)
-            stages(1).dims.u = sum(~isinf(options.ub));
-            stages(1).ineq.b.ubidx = subsref((1:stages(1).dims.n)',struct('type', '()', 'subs', {{~isinf(options.ub)}})); % index vector for lower bounds
-            stages(1).ineq.b.ub = options.ub(stages(1).ineq.b.ubidx); % lower bounds
-        else
-            stages(1).dims.u = 0;
-            stages(1).ineq.b.ubidx = [];
-            for i=1:length(options.ub)
-                stages(1).dims.u = max(stages(1).dims.u, sum(~isinf(options.ub{i})));
-                stages(1).ineq.b.ubidx = sort(unique([stages(1).ineq.b.ubidx; subsref((1:length(options.ub{i}))',struct('type', '()', 'subs', {{~isinf(options.ub{i})}}))]));
-            end
-            paramIdx = paramIdx+1; parameters(paramIdx) = newParam('ub', 1, 'ineq.b.ub');
-        end
-        stages(2).dims.u = 0;
-        % Quadtratic constraints
-        stages(1).dims.q = 0;
-        stages(2).dims.q = 0;
-        
-        % Set outputs
-        outputs(1) = newOutput('z',1,1:stages(1).dims.n);
-        outputs(2) = newOutput('u',2,1:stages(2).dims.n);
-    else
-        stages = MultistageProblem(1);
-        % Find largest necessary "state" dimensions
-        if ~isempty(options.Aeq)
-            if ~iscell(options.Aeq)
-                stages(1).dims.n = size(options.Aeq,2);
-            else
-                stages(1).dims.n = 0;
-                for i=1:length(options.Aeq)
-                    stages(1).dims.n = max(stages(1).dims.n, size(options.Aeq{i},2));
-                end
-            end
-        elseif ~isempty(options.Aineq)
-            if ~iscell(options.Aineq)
-                stages(1).dims.n = size(options.Aineq,2);
-            else
-                stages(1).dims.n = 0;
-                for i=1:length(options.Aineq)
-                    stages(1).dims.n = max(stages(1).dims.n, size(options.Aineq{i},2));
-                end
-            end
-        elseif ~isempty(options.lb)
-            if ~iscell(options.lb)
-                stages(1).dims.n = length(options.lb);
-            else
-                stages(1).dims.n = 0;
-                for i=1:length(options.lb)
-                    stages(1).dims.n = max(stages(1).dims.n, length(options.lb{i}));
-                end
-            end
-        elseif ~isempty(options.ub)
-            if ~iscell(options.ub)
-                stages(1).dims.n = length(options.ub);
-            else
-                stages(1).dims.n = 0;
-                for i=1:length(options.ub)
-                    stages(1).dims.n = max(stages(1).dims.n, length(options.ub{i}));
-                end
-            end
-        end
-        % Cost
-        stages(1).cost.H = eye(stages(1).dims.n);
-        paramIdx = paramIdx+1; parameters(paramIdx) = newParam('x', 1, 'cost.f');
-        % Equality constraints
-        if isempty(options.Aeq)
-            stages(1).dims.r = 0;
-        elseif ~iscell(options.Aeq)
-            stages(1).dims.r = size(options.Aeq,1);
-            stages(1).eq.D = options.Aeq;
-            if ~isfield(options.parametrize, 'beq')
-                stages(1).eq.c = options.beq;
-            else
-                paramIdx = paramIdx+1; parameters(paramIdx) = newParam('beq', 1, 'eq.c');
-            end
-        else
-            stages(1).dims.r = 0;
-            for i=1:length(options.Aeq)
-                stages(1).dims.r = max(stages(1).dims.r, size(options.Aeq{i},1));
-            end
-            if stages(1).dims.r > 0
-                paramIdx = paramIdx+1; parameters(paramIdx) = newParam('Aeq', 1, 'eq.D');
-                paramIdx = paramIdx+1; parameters(paramIdx) = newParam('beq', 1, 'eq.c');
-            end
-        end
-        % Inequality constraints
-        if isempty(options.Aineq)
-            stages(1).dims.p = 0;
-        elseif ~iscell(options.Aineq)
-            stages(1).dims.p = size(options.Aineq,1);
-            stages(1).ineq.p.A = options.Aineq;
-            if ~isfield(options.parametrize, 'beq')
-                stages(1).ineq.p.b = options.bineq;
-            else
-                paramIdx = paramIdx+1; parameters(paramIdx) = newParam('bineq', 1, 'ineq.p.b');
-            end
-        else
-            stages(1).dims.p = 0;
-            for i=1:length(options.Aineq)
-                stages(1).dims.p = max(stages(1).dims.p, size(options.Aineq{i},1));
-            end
-            if stages(1).dims.p > 0
-                paramIdx = paramIdx+1; parameters(paramIdx) = newParam('Aineq', 1, 'ineq.p.A');
-                paramIdx = paramIdx+1; parameters(paramIdx) = newParam('bineq', 1, 'ineq.p.b');
-            end
-        end
-        % Lower bounds
-        if isempty(options.lb)
-            stages(1).dims.l = 0;
-        elseif ~iscell(options.lb)
-            stages(1).dims.l = sum(~isinf(options.lb));
-            stages(1).ineq.b.lbidx = subsref((1:stages(1).dims.n)',struct('type', '()', 'subs', {{~isinf(options.lb)}})); % index vector for lower bounds
-            stages(1).ineq.b.lb = options.lb(stages(1).ineq.b.lbidx); % lower bounds
-        else
-            stages(1).dims.l = 0;
-            stages(1).ineq.b.lbidx = [];
-            for i=1:length(options.lb)
-                stages(1).dims.l = max(stages(1).dims.l, sum(~isinf(options.lb{i})));
-                stages(1).ineq.b.lbidx = sort(unique([stages(1).ineq.b.lbidx; subsref((1:length(options.lb{i}))',struct('type', '()', 'subs', {{~isinf(options.lb{i})}}))]));
-            end
-            if stages(1).dims.l > 0
-                paramIdx = paramIdx+1; parameters(paramIdx) = newParam('lb', 1, 'ineq.b.lb');
-            end
-        end
-        % Upper bounds
-        if isempty(options.ub)
-            stages(1).dims.u = 0;
-        elseif ~iscell(options.ub)
-            stages(1).dims.u = sum(~isinf(options.ub));
-            stages(1).ineq.b.ubidx = subsref((1:stages(1).dims.n)',struct('type', '()', 'subs', {{~isinf(options.ub)}})); % index vector for lower bounds
-            stages(1).ineq.b.ub = options.ub(stages(1).ineq.b.ubidx); % lower bounds
-        else
-            stages(1).dims.u = 0;
-            stages(1).ineq.b.ubidx = [];
-            for i=1:length(options.ub)
-                stages(1).dims.u = max(stages(1).dims.u, sum(~isinf(options.ub{i})));
-                stages(1).ineq.b.ubidx = sort(unique([stages(1).ineq.b.ubidx; subsref((1:length(options.ub{i}))',struct('type', '()', 'subs', {{~isinf(options.ub{i})}}))]));
-            end
-            if stages(1).dims.u > 0
-                paramIdx = paramIdx+1; parameters(paramIdx) = newParam('ub', 1, 'ineq.b.ub');
-            end
-        end
-        % Quadtratic constraints
-        stages(1).dims.q = 0;
-        
-        % Set outputs
-        outputs(1) = newOutput('z',1,1:stages(1).dims.n);
+
+    if options.verbose >= 1
+        display('Generating projection...');
     end
     
-    %% Options
-    codeoptions = getOptions(options.name);
-    % TODO: Make customizable
-    codeoptions.printlevel = 0;
-    codeoptions.maxit = 20;
-    codeoptions.timing = 1;
-    codeoptions.floattype = 'double';
-    codeoptions.overwrite = 1; % Always overwrite
-    codeoptions.BuildSimulinkBlock = 0;
-    codeoptions.cleanup = 0;
-    
-    %% Generate projection using FORCES
-    generateCode(stages, parameters, codeoptions, outputs);
-    
-    info.dims = stages(1).dims;
-    info.lbidx = stages(1).ineq.b.lbidx;
-    info.ubidx = stages(1).ineq.b.ubidx;
+    j = 1;
+    if options.generateProjections
+        for i=1:model.dims.nr
+            % Combine lower bounds
+            if isfield(model.dyn, 'lb') && ~isempty(model.dyn.lb) && length(model.dyn.lb{i}) == model.dims.nx+model.dims.nu
+                if (isfield(model.const, 'lb') && ~isempty(model.const.lb) && length(model.const.lb) == model.dims.nx+model.dims.nu)
+                    lb{i} = max(model.dyn.lb{i}, model.const.lb);
+                end
+            elseif (isfield(model.const, 'lb') && ~isempty(model.const.lb) && length(model.const.lb) == model.dims.nx+model.dims.nu)
+                lb{i} = model.const.lb;
+            end
+            % Combine upper bounds
+            if isfield(model.dyn, 'ub') && ~isempty(model.dyn.ub) && length(model.dyn.ub{i}) == model.dims.nx+model.dims.nu
+                if (isfield(model.const, 'ub') && ~isempty(model.const.ub) && length(model.const.ub) == model.dims.nx+model.dims.nu)
+                    ub{i} = min(model.dyn.ub{i}, model.const.ub);
+                end
+            elseif (isfield(model.const, 'ub') && ~isempty(model.const.ub) && length(model.const.ub) == model.dims.nx+model.dims.nu)
+                ub{i} = [];
+            end
+            % Combine equality constraints
+            Aeq{i} = [];
+            beq{i} = [];
+            if isfield(model.dyn, 'Aeq') && ~isempty(model.dyn.Aeq) && ~isempty(model.dyn.Aeq{i})
+                Aeq{i} = model.dyn.Aeq{i};
+                beq{i} = model.dyn.beq{i};
+            end
+            if isfield(model.const, 'Aeq') && ~isempty(model.const.Aeq)
+                Aeq{i} = [Aeq{i}; model.const.Aeq];
+                beq{i} = [beq{i}; model.const.beq];
+            end
+            % Combine inequality constraints
+            Aineq{i} = [];
+            bineq{i} = [];
+            if isfield(model.dyn, 'Aineq') && ~isempty(model.dyn.Aineq) && ~isempty(model.dyn.Aineq{i})
+                Aineq{i} = model.dyn.Aineq{i};
+                bineq{i} = model.dyn.bineq{i};
+            end
+            if isfield(model.const, 'Aineq') && ~isempty(model.const.Aineq)
+                Aineq{i} = [Aineq{i}; model.const.Aineq];
+                beq{i} = [bineq{i}; model.const.bineq];
+            end
+            
+            % Initial stage projection
+            %          [theta]                   [theta]
+            % [-A -B I][u]     = [c]  , [Aineq 0][u]     <= [bineq], lb <= u <= ub
+            % [ Aeq  0][w]     = [beq]           [w]
+            % Constuct constraint data
+            C.Aeq{j} = [eye(model.dims.nx) zeros(model.dims.nx, model.dims.nu+model.dims.nx); -model.dyn.A{i} -model.dyn.B{i} eye(model.dims.nx)];
+            C.beq{j} = [zeros(model.dims.nx,1); model.dyn.c{i}];
+            if ~isempty(Aeq{i})
+                C.Aeq{j} = [C.Aeq; Aeq{i} zeros(size(Aeq{i},1),model.dims.nw)];
+                C.beq{j} = [C.beq; beq{i}];
+            end
+            if ~isempty(Aineq{i})
+                C.Aineq{j} = [Aineq{i}, zeros(size(Aineq{i},1),model.dims.nw)];
+                C.bineq{j} = bineq{i};
+            else
+                C.Aineq{j} = [];
+                C.bineq{j} = [];
+            end
+            if ~isempty(lb{i})
+                C.lb{j} = [lb{i}; -inf(model.dims.nx,1)];
+            else
+                C.lb{j} = [];
+            end
+            if ~isempty(ub{i})
+                C.ub{j} = [ub{i}; inf(model.dims.nx,1)];
+            else
+                C.ub{j} = [];
+            end
+            j= j+1;
+            % Standard stage projection
+            %          [x]                 [x]                    [x]
+            % [-A -B I][u] = [c], [Aineq 0][u] < = [bineq], lb <= [u] <= ub
+            %          [w]                 [w]
+            % Constuct constraint data
+            C.Aeq{j} = [-model.dyn.A{i} -model.dyn.B{i} eye(model.dims.nx)];
+            C.beq{j} = model.dyn.c{i};
+            if ~isempty(Aeq{i})
+                C.Aeq{j} = [C.Aeq; Aeq{i} zeros(size(Aeq{i},1),model.dims.nw)];
+                C.beq{j} = [C.beq; beq{i}];
+            end
+            if ~isempty(Aineq{i})
+                C.Aineq{j} = [Aineq{i}, zeros(size(Aineq{i},1),model.dims.nw)];
+                C.bineq{j} = bineq{i};
+            else
+                C.Aineq{j} = [];
+                C.bineq{j} = [];
+            end
+            if ~isempty(lb{i})
+                C.lb{j} = [lb{i}; -inf(model.dims.nx,1)];
+            else
+                C.lb{j} = [];
+            end
+            if ~isempty(ub{i})
+                C.ub{j} = [ub{i}; inf(model.dims.nx,1)];
+            else
+                C.ub{j} = [];
+            end
+            j=j+1;
+            % Final stage projection
+            %
+            %
+            % Constuct constraint data
+            C.Aeq{j} = [];
+            C.beq{j} = [];
+            C.Aineq{j} = [];
+            C.bineq{j} = [];
+            if ~isempty(lb{i})
+                C.lb{j} = lb{i}(1:model.dims.nx);
+            else
+                C.lb{j} = [];
+            end
+            if ~isempty(ub{i})
+                C.ub{j} = ub{i}(1:model.dims.nx);
+            else
+                C.ub{j} = [];
+            end
+            j=j+1;
+        end
         
+        pcg.generateFORCESProjectionCode(C, model.dims, options.N, 'gendir', options.gendir, 'verbose', options.verbose);
+    end
+    
 end
+
