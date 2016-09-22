@@ -137,7 +137,7 @@ function generateFORCESProjectionCode(varargin)
                     fprintf(f, ['\t' '\t' '\t' ' ' sprintf('%0.17g, ', Aineq(:,j)) '\n']);
                 end
                 fprintf(f, ['\t' '\t' '\t' ' ' sprintf('%0.17g, ', Aineq(1:end-1,end)) '%0.17g},' '\n'], Aineq(end,end));
-                bineq = [C.bineq{idx}; zeros(info.dims.r-length(C.bineq{idx}),1)];
+                bineq = [C.bineq{idx}; zeros(info.dims.p-length(C.bineq{idx}),1)];
                 fprintf(f, ['\t' '\t' '\t{' sprintf('%0.17g, ', bineq(1:end-1)) '%0.17g}, /* bineq */\n'], bineq(end));
             end
             % Lower bound
