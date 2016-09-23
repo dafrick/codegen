@@ -30,11 +30,11 @@ function [M, c, W, update, xi] = getIterationData(H, h, N, dims, xi, varargin)
     % Compute weigthing matrix W
     [V,D] = eig(M);
     d = diag(D);
-    [~,i] = sort(d);
+    [~,i] = sort(real(d));
     d = 2*d;
-    d(i(1:size(Aeq,1))) = -1;
+    d(i(1:m)) = -1;
     d = 1./d;
-    W = V*diag(d)*V';
+    W = real(V)*diag(d)*real(V)';
     
     % Update function for changing h
     update = @(hn) (xi*R-eye(size(R)))\(R*(hn+H*v)-v);
