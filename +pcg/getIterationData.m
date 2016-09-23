@@ -1,8 +1,20 @@
-function [M, c, W, update, xi] = getIterationData(H, h, N, dims, xi)
-
-    % Build equality constraints
-    Aeq = kron(eye(N), [zeros(dims.nx,dims.nu) eye(dims.nx) -eye(dims.nw)]);
-    beq = zeros(N*dims.nx,1);
+function [M, c, W, update, xi] = getIterationData(H, h, N, dims, xi, varargin)
+    p = inputParser;
+    p.addParameter('Aeq', [], @isnumeric);
+    p.addParameter('beq', [], @isnumeric);
+    p.addParameter('eps', 100*eps, @isnumeric);
+    p.parse(varargin{:});
+    options = p.Results;
+    
+    if isempty(options.Aeq)
+        % Build equality constraints
+        Aeq = kron(eye(N), [zeros(dims.nx,dims.nu) eye(dims.nx) -eye(dims.nw)]);
+        beq = zeros(N*dims.nx,1);
+    else
+        Aeq = options.Aeq;
+        beq = options.beq;
+    end
+    m = sum(svd(Aeq) > options.eps);
     v = Aeq\beq;
 
     K = [H Aeq'; Aeq zeros(size(Aeq,1),size(Aeq,1))]^(-1);
