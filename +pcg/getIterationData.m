@@ -36,6 +36,16 @@ function [M, c, W, update, xi] = getIterationData(H, h, N, dims, xi, varargin)
     d = 1./d;
     W = real(V)*diag(d)*real(V)';
     
+    % Sparsify
+    R(abs(R)< options.eps) = 0;
+    R = sparse(R);
+    H(abs(H)< options.eps) = 0;
+    H = sparse(H);
+    M(abs(M)< options.eps) = 0;
+    M = sparse(M);
+    W(abs(W)< options.eps) = 0;
+    W = sparse(W);
+    
     % Update function for changing h
     update = @(hn) (xi*R-eye(size(R)))\(R*(hn+H*v)-v);
 
