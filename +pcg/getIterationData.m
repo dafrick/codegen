@@ -20,7 +20,7 @@ function [M, c, W, update, xi] = getIterationData(H, h, N, dims, xi, varargin)
     K = [H Aeq'; Aeq zeros(size(Aeq,1),size(Aeq,1))]^(-1);
     R = K(1:dims.nn,1:dims.nn);
     % Checking whether xi satisfies xi > 1/[smallest positive eigenvalue of R]
-    ximin = 1/min(subsref(eig(R), struct('type', '()', 'subs', {{eig(R)>0}})));
+    ximin = 1/min(subsref(sort(eig(R),1,'descend'), struct('type', '()', 'subs', {{1:m}})));
     if xi <= ximin
         warning('getIterationData:InvalidProximalScaling', ['The proximal scaling xi is not large enough, needs to be larger than ' num2str(ximin) '. Setting to xi ' num2str(ximin*2) ' and proceeding']);
         xi = 2*ximin;
