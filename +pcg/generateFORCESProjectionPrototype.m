@@ -145,38 +145,38 @@ function info = generateFORCESProjectionPrototype(varargin)
     else
         stages = MultistageProblem(1);
         % Find largest necessary "state" dimensions
+        stages(1).dims.n = 0;
         if ~isempty(options.Aeq)
             if ~iscell(options.Aeq)
-                stages(1).dims.n = size(options.Aeq,2);
+                stages(1).dims.n = max(stages(1).dims.n, size(options.Aeq,2));
             else
-                stages(1).dims.n = 0;
                 for i=1:length(options.Aeq)
                     stages(1).dims.n = max(stages(1).dims.n, size(options.Aeq{i},2));
                 end
             end
-        elseif ~isempty(options.Aineq)
+        end
+        if ~isempty(options.Aineq)
             if ~iscell(options.Aineq)
-                stages(1).dims.n = size(options.Aineq,2);
+                stages(1).dims.n = max(stages(1).dims.n, size(options.Aineq,2));
             else
-                stages(1).dims.n = 0;
                 for i=1:length(options.Aineq)
                     stages(1).dims.n = max(stages(1).dims.n, size(options.Aineq{i},2));
                 end
             end
-        elseif ~isempty(options.lb)
+        end
+        if ~isempty(options.lb)
             if ~iscell(options.lb)
-                stages(1).dims.n = length(options.lb);
+                stages(1).dims.n = max(stages(1).dims.n, length(options.lb));
             else
-                stages(1).dims.n = 0;
                 for i=1:length(options.lb)
                     stages(1).dims.n = max(stages(1).dims.n, length(options.lb{i}));
                 end
             end
-        elseif ~isempty(options.ub)
+        end
+        if ~isempty(options.ub)
             if ~iscell(options.ub)
-                stages(1).dims.n = length(options.ub);
+                stages(1).dims.n = max(stages(1).dims.n, length(options.ub));
             else
-                stages(1).dims.n = 0;
                 for i=1:length(options.ub)
                     stages(1).dims.n = max(stages(1).dims.n, length(options.ub{i}));
                 end
