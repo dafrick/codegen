@@ -28,13 +28,14 @@ function [M, c, W, update, xi] = getIterationData(H, h, N, dims, xi, varargin)
     M = xi*((xi*R-eye(size(R)))\R);
     c = (xi*R-eye(size(R)))\(R*(h+H*v)-v);
     % Compute weigthing matrix W
-    [V,D] = eig(M);
+    [V,D] = eig((M+M')/2); % Ensure M is symmetric (small asymmetry can lead to large errors!)
     d = diag(D);
     [~,i] = sort(real(d));
     d = 2*d;
     d(i(1:m)) = -1;
     d = 1./d;
-    W = real(V)*diag(d)*real(V)';
+    W = V*diag(d)*V';
+    W = real(W);
     
     % Sparsify
     R(abs(R)< options.eps) = 0;
