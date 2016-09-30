@@ -33,7 +33,7 @@
 %     - beq, a vector of length m containing the
 %        equality constraints Aeq*[x; u] = beq
 
-function generateFORCESProjection(varargin)
+function info = generateFORCESProjection(varargin)
     p = inputParser;
     p.addRequired('model', @isstruct);
     p.addRequired('N', @(x)(isnumeric(x) && length(x) == 1 && x > 0 && mod(x,1) == 0));
@@ -179,7 +179,9 @@ function generateFORCESProjection(varargin)
             j=j+1;
         end
         
-        pcg.generateFORCESProjectionCode(C, model.dims, options.N, 'gendir', options.gendir, 'verbose', options.verbose);
+        info = pcg.generateFORCESProjectionCode(C, model.dims, options.N, 'gendir', options.gendir, 'verbose', options.verbose);
+    else
+        info = [];
     end
     
 end

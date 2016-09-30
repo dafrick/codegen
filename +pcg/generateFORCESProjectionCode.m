@@ -33,7 +33,7 @@
 %     - beq, a vector of length m containing the
 %        equality constraints Aeq*[x; u] = beq
 
-function generateFORCESProjectionCode(varargin)
+function info = generateFORCESProjectionCode(varargin)
     p = inputParser;
     p.addRequired('C', @isstruct);
     p.addRequired('dims', @isstruct);
@@ -44,6 +44,8 @@ function generateFORCESProjectionCode(varargin)
     p.addParameter('name', 'project', @ischar);
     p.addParameter('nameFORCES', 'allinone', @ischar);
     p.addParameter('nameHelpers', 'helpers', @ischar);
+    p.addParameter('returnFlag', false, @islogical);
+    p.addParameter('initialState', true, @islogical);
     p.parse(varargin{:});
     options = p.Results;
     dims = options.dims;
@@ -99,7 +101,11 @@ function generateFORCESProjectionCode(varargin)
     f = fopen([options.gendir '/' options.name '.h'], 'w');
     fprintf(f, ['#ifndef _%s_H_\n' ...
                 '#define _%s_H_\n\n'], upper(options.name), upper(options.name));
-    fprintf(f, 'void %s(const double* x, const double* theta, double* z);\n', options.name);
+    if options.returnFlag
+        fprintf(f, 'void %s(const double* x, const double* theta, double* z, int* flag);\n', options.name);
+    else
+        fprintf(f, 'void %s(const double* x, const double* theta, double* z);\n', options.name);
+    end
     fprintf(f, '\n#endif /*_%s_H_*/\n', upper(options.name));
     fclose(f);
     f = fopen([options.gendir '/' options.name '.c'], 'w');
@@ -127,7 +133,7 @@ function generateFORCESProjectionCode(varargin)
                 end
                 fprintf(f, ['\t' '\t' '\t' ' ' sprintf('%0.17g, ', Aeq(1:end-1,end)) '%0.17g},' '\n'], Aeq(end,end));
                 beq = [C.beq{idx}; zeros(info.dims.r-length(C.beq{idx}),1)];
-                fprintf(f, ['\t' '\t' '\t{' sprintf('%0.17g, ', beq(1:end-1)) '%0.17g}, /* beq */\n'], beq(end));
+                fprintf(f, ['\t' '\t' '\t{' sprintf('%0.17g, ', beq(1:end-1)) '%0.17g}, /* beq */\n'], beq(end)); %TODO: Replace with strjoin
             end
             % Inequality constraint
             if info.dims.p > 0
@@ -154,32 +160,53 @@ function generateFORCESProjectionCode(varargin)
             end
             fprintf(f, ['\t' '};\n']);
         end
-        beq = C.beq{(i-1)*3+1};
-        fprintf(f, ['\t' 'double beq%i[%i] = {' sprintf('%0.17g, ', beq(1:end-1)) '%0.17g}; /* unmodified beq */\n'], i, length(beq), beq(end));
+        if options.initialState
+            beq = C.beq{(i-1)*3+1};
+            fprintf(f, ['\t' 'double beq%i[%i] = {' sprintf('%0.17g, ', beq(1:end-1)) '%0.17g}; /* unmodified beq */\n'], i, length(beq), beq(end));
+        end
     end
     fprintf(f, '/* DATA MARKER */\n');
-    fprintf(f, ['\n' '/** Projection **/\n' ...
-                'void project(const double* x, const double* theta, double* z) {\n' ...
-                '\t' 'unsigned int k, i;\n' ...
-                ]);
+    fprintf(f, ['\n' '/** Projection **/\n']);
+    if options.returnFlag
+        fprintf(f, 'void %s(const double* x, const double* theta, double* z, int* flag) {\n', options.name);
+    else
+        fprintf(f, 'void %s(const double* x, const double* theta, double* z) {\n', options.name);
+    end
+    fprintf(f, ['\t' 'unsigned int k, i;\n']);
     for i=1:dims.nr
         fprintf(f, ['\n\t' '/* Region %i */\n'], i);
         fprintf(f, ['\t' '\t' '/* Initial stage */\n']);
-        fprintf(f, ['\t' '\t' 'vadd(beq%i, theta, %i, params%ii.beq); /* Set initial state constraint */\n'], i, dims.nx, i);
-        fprintf(f, ['\t' '\t' 'vcopyminus(theta, %i, params%ii.x); /* Set projectant */\n'], dims.nx, i);
-        fprintf(f, ['\t' '\t' 'vcopyminus(&x[0], %i, &params%ii.x[%i]); /* Set projectant */\n'], dims.nu+dims.nx, i, dims.nx);
+        if options.initialState
+            fprintf(f, ['\t' '\t' 'vadd(beq%i, theta, %i, params%ii.beq); /* Set initial state constraint */\n'], i, dims.nx, i);
+            fprintf(f, ['\t' '\t' 'vcopyminus(theta, %i, params%ii.x); /* Set projectant */\n'], dims.nx, i);
+            fprintf(f, ['\t' '\t' 'vcopyminus(&x[0], %i, &params%ii.x[%i]); /* Set projectant */\n'], dims.nu+dims.nx, i, dims.nx);
+        else
+            fprintf(f, ['\t' '\t' 'vcopyminus(&x[0], %i, &params%ii.x[0]); /* Set projectant */\n'], dims.nu+dims.nx, i);
+        end
         if info.dims.n-dims.n > 0
             fprintf(f, ['\t' '\t' 'for(i=0; i<%i; i++) { params%ii.x[%i+i] = 0.0; }\n'], info.dims.n-dims.n, i, dims.n);
         end
-        fprintf(f, ['\t' '\t' options.nameFORCES '_solve(&params%ii, &out, &info, 0); /* Project */\n'], i);
-        fprintf(f, ['\t' '\t' 'vcopy(&out.z[%i], %i, &z[%i]); /* Copy solution */\n'], dims.nx, dims.nu+dims.nx, (i-1)*dims.nn);
+        if options.returnFlag
+            fprintf(f, ['\t' '\t' 'flag[(%i-1)*(%i+1)] = ' options.nameFORCES '_solve(&params%ii, &out, &info, 0); /* Project */\n'], i, options.N, i);
+        else
+            fprintf(f, ['\t' '\t' options.nameFORCES '_solve(&params%ii, &out, &info, 0); /* Project */\n'], i);
+        end
+        if options.initialState
+            fprintf(f, ['\t' '\t' 'vcopy(&out.z[%i], %i, &z[%i]); /* Copy solution */\n'], dims.nx, dims.nu+dims.nx, (i-1)*dims.nn);
+        else
+            fprintf(f, ['\t' '\t' 'vcopy(&out.z[0], %i, &z[%i]); /* Copy solution */\n'], dims.nu+dims.nx, (i-1)*dims.nn);
+        end
         fprintf(f, ['\t' '\t' '/* Standard stage */\n']);
         fprintf(f, ['\t' '\t' 'for(k=0; k<%i; k++) {\n'], options.N-1);
         fprintf(f, ['\t' '\t' '\t' 'vcopyminus(&x[%i+k*%i], %i, params%is.x); /* Set projectant */\n'], dims.nu+dims.nx, dims.n, dims.n, i);
         if info.dims.n-dims.n > 0
             fprintf(f, ['\t' '\t' '\t' 'for(i=0; i<%i; i++) { params%is.x[%i+i] = 0.0; }\n'], info.dims.n-dims.n, i, dims.n);
         end
-        fprintf(f, ['\t' '\t' '\t' options.nameFORCES '_solve(&params%is, &out, &info, 0); /* Project */\n'], i);
+        if options.returnFlag
+            fprintf(f, ['\t' '\t' '\t' 'flag[(%i-1)*(%i+1)+k+1] = ' options.nameFORCES '_solve(&params%is, &out, &info, 0); /* Project */\n'], i, options.N, i);
+        else
+            fprintf(f, ['\t' '\t' '\t' options.nameFORCES '_solve(&params%is, &out, &info, 0); /* Project */\n'], i);
+        end
         fprintf(f, ['\t' '\t' '\t' 'vcopy(out.z, %i, &z[%i+k*%i]); /* Copy solution */\n'], dims.n, (i-1)*dims.nn+dims.nu+dims.nx, dims.n);
         fprintf(f, ['\t' '\t' '}\n']);
         fprintf(f, ['\t' '\t' '/* Final stage */\n']);
@@ -187,7 +214,11 @@ function generateFORCESProjectionCode(varargin)
         if info.dims.n-dims.nx > 0
             fprintf(f, ['\t' '\t' 'for(i=0; i<%i; i++) { params%if.x[%i+i] = 0.0; }\n'], dims.n-dims.nx, i, dims.nx);
         end
-        fprintf(f, ['\t' '\t' options.nameFORCES '_solve(&params%if, &out, &info, 0); /* Project */\n'], i);
+        if options.returnFlag
+            fprintf(f, ['\t' '\t' 'flag[(%i-1)*(%i+1)+%i] = ' options.nameFORCES '_solve(&params%if, &out, &info, 0); /* Project */\n'], i, options.N, options.N, i);
+        else
+            fprintf(f, ['\t' '\t' options.nameFORCES '_solve(&params%if, &out, &info, 0); /* Project */\n'], i);
+        end
         fprintf(f, ['\t' '\t' 'vcopy(out.z, %i, &z[%i]); /* Copy solution */\n'], dims.nx, i*dims.nn-dims.nx);
     end
     fprintf(f, '}\n');
@@ -201,9 +232,11 @@ function generateFORCESProjectionCode(varargin)
                 '\t' 'double* x = mxGetPr(prhs[0]); /* Projectant */\n' ...
                 '\t' 'double* theta = mxGetPr(prhs[1]); /* Initial state */\n' ...
                 '\t' 'plhs[0] = mxCreateDoubleMatrix(%i,%i,mxREAL); \n' ...
-                '\t' 'double* z = mxGetPr(plhs[0]); /* Projection */\n'], dims.nn, dims.nr);
-    fprintf(f, ['\t' '%s(x, theta, z);\n'], options.name);
-    fprintf(f, ['\t' 'if(nlhs > 1) {\n' ...
+                '\t' 'double* z = mxGetPr(plhs[0]); /* Projection */\n' ...
+                '\t' 'plhs[1] = mxCreateNumericMatrix(%i,%i,mxINT32_CLASS,mxREAL);\n' ...
+                '\t' 'int* feas = mxGetData(plhs[1]); /* Projection costs */\n'], dims.nn, dims.nr, options.N+1, dims.nr);
+    fprintf(f, ['\t' '%s(x, theta, z, feas);\n'], options.name);
+    fprintf(f, ['\t' 'if(nlhs > 2) {\n' ...
                 '\t' '\t' 'plhs[1] = mxCreateDoubleMatrix(%i,%i,mxREAL);\n' ...
                 '\t' '\t' 'double* C = mxGetPr(plhs[1]); /* Projection costs */\n' ...
                 '\t' '\t' 'unsigned int i,k;\n'], options.N+1, dims.nr);
@@ -220,18 +253,23 @@ function generateFORCESProjectionCode(varargin)
         display('C-code, done. Compiling...');
     end
     % Compile
-    % TODO: Properly handel relative and absolute paths in gendir
+    % TODO: Properly handle relative and absolute paths in gendir
+    includes = {['./' options.gendir], ['./' options.nameFORCES '/include']};
+    objects = {[options.gendir '/' options.name '.c'], [options.gendir '/' options.nameHelpers '.c'], [options.nameFORCES '/obj/' options.nameFORCES '.o']};
     compile = ['mex ' options.gendir '/' options.name '_mex.c'];
-    compile = [compile ' -I./' options.gendir ...
-                       ' -I./' options.nameFORCES '/include'];
-    compile = [compile ' ' options.gendir '/' options.name '.c' ... 
-                       ' ' options.gendir '/' options.nameHelpers '.c' ...
-                       ' ' options.nameFORCES '/obj/' options.nameFORCES '.o'];
+    compile = [compile ' -I' strjoin(includes, ' -I')];
+    compile = [compile ' ' strjoin(objects, ' ')];
     compile = [compile ' -outdir ' options.gendir ' -output ' options.name];
     eval(compile);
     if options.verbose >= 1
         display('...done.');
     end
+    
+    info.name = options.name;
+    info.nameHelpers = options.nameHelpers;
+    info.nameFORCES = options.nameFORCES;
+    info.compile.includes = includes;
+    info.compile.objects = objects;
     
 end
 
