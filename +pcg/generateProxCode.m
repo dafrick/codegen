@@ -24,6 +24,8 @@ function generateProxCode(varargin)
         display('Generating embedded fixed-point iteration...');
     end
     
+    dim = size(M,1);
+    
     [Mdata, Mcode] = pcg.generateMVMult(options.M, [upper(options.solverName) '_M'], 'a', 'r', 'sym', true, 'nDataTabs', 0, 'nCodeTabs', 1);
     [gWdata, gWcode] = pcg.generateMVMult(options.stepSize*options.W, [upper(options.solverName) '_gW'], 'a', 'r', 'sym', true, 'nDataTabs', 0, 'nCodeTabs', 1);
     
@@ -109,9 +111,6 @@ function generateProxCode(varargin)
     f = fopen([options.gendir '/project.c'], 'rt');
     code = fread(f, inf, 'char=>char');
     fclose(f);
-    dim = regexp(code', 'plhs... = mxCreateDoubleMatrix.(\d+),1,mxREAL.;', 'tokens');
-    dim = dim{1}{1};
-    n = str2num(dim);
     code = strrep(code', 'x', 's');
     code = strrep(code, 'project.h', [options.solverName '.h"\n#include "timer.h']);
     code = strrep(code, 'mes', 'mex');
