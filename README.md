@@ -1,7 +1,7 @@
 # Automatic code-generation tool for hybrid MPC
 a low-complexity, iterative method for hybrid model predictive control 
 ## Introduction
-In [\[arXiv:1609.02819\]](http://arxiv.org/abs/1609.02819) we present a novel iterative method for finding loval minima of hybrid MPC roblems 
+In [\[arXiv:1609.02819\]](http://arxiv.org/abs/1609.02819) we present a novel iterative method for finding loval minima of hybrid MPC problems 
 ## Installation instructions
 Make sure you have installed the [multi-parametric toolbox](http://control.ee.ethz.ch/~mpt/3/Main/Installation) (MPT3)
 ## How to use
